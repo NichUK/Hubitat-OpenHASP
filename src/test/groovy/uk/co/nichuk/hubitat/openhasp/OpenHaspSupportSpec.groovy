@@ -43,6 +43,26 @@ class OpenHaspSupportSpec extends Specification {
     }
 
     @Unroll
+    def 'normalizes OpenHASP idle payload #payload to #idleValue'() {
+        expect:
+        OpenHaspSupport.normalizeIdleValue(payload) == idleValue
+
+        where:
+        payload                          || idleValue
+        'long'                           || 'idle'
+        'idle'                           || 'idle'
+        'on'                             || 'idle'
+        1                                || 'idle'
+        true                             || 'idle'
+        'off'                            || 'active'
+        'active'                         || 'active'
+        0                                || 'active'
+        false                            || 'active'
+        '{"event":"changed","val":"long"}' || 'idle'
+        '{"event":"changed","val":"off"}'  || 'active'
+    }
+
+    @Unroll
     def 'converts Hubitat level #level to Zigbee2MQTT brightness #brightness'() {
         expect:
         OpenHaspSupport.levelToBrightness(level) == brightness

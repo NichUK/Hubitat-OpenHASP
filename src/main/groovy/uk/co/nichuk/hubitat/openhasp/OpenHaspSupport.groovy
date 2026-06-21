@@ -78,6 +78,18 @@ class OpenHaspSupport {
         safeInt(openHaspPayloadValue(value), fallback)
     }
 
+    static String normalizeIdleValue(Object value) {
+        Object normalized = openHaspPayloadValue(value)
+        String text = "${normalized ?: ''}".trim().toLowerCase()
+        if (text in ['long', 'idle', 'on', '1', 'true', 'yes']) {
+            return 'idle'
+        }
+        if (text in ['off', 'active', '0', 'false', 'no']) {
+            return 'active'
+        }
+        text ? text : 'active'
+    }
+
     static Object openHaspPayloadValue(Object value) {
         if (value == null || !(value instanceof CharSequence)) {
             return value

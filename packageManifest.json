@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Adds a Manager MQTT pre-flight checklist for built-in versus external broker setups, including Import/Export readiness checks for external MQTT brokers.",
+  "releaseNotes": "Adds configurable OpenHASP screen idle/backlight handling, including idle-state mapping, wake brightness, optional HTTP idle-time configuration, and managed backlight command output.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

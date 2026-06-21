@@ -51,14 +51,19 @@ Map OpenHASP topics to Hubitat devices. The bathroom panel uses these mappings:
 | Bathroom Panel Bedroom Main Dimmer Event | Switch | `hasp/bathroom_panel/state/p1b53` | `switch` | optional | optional |
 | Bathroom Panel Bedroom Main Dimmer Command | SwitchLevel | none required | none | `hasp/bathroom_panel/command/p1b53.val` | `setLevel={{value}}` |
 | Bathroom UFH Timer Button | PushableButton preferred, Switch fallback | `hasp/bathroom_panel/state/p1b21` | `pushed` or `switch` | none required | none |
+| Bathroom Panel Idle State | Switch | `hasp/bathroom_panel/state/idle` | `switch` | none required | none |
 
 For switch state value mappings, map OpenHASP payloads such as `{"event":"up","val":1}` to `on` and `{"event":"up","val":0}` to `off`. If the same MQTT Import switch device is used for both state events and commands, the panel app suppresses the command echo so mirrored panel updates do not command the target device a second time.
+
+For the idle state device, map OpenHASP payload `long` to `on` and payload `off` to `off`. The panel app treats `on`/`long` as idle and `off` as active.
 
 For dimmers, OpenHASP publishes slider events as JSON such as `{"event":"changed","val":38}`. MQTT Import does not currently extract JSON fields into numeric attributes, so create a Switch event device with no value mappings for the state topic and a separate SwitchLevel command device for the `.val` command topic. `OpenHASP Manager` parses the raw event device value and mirrors Hubitat state back through the command device. Do not subscribe the panel app to the SwitchLevel command device as an input; command devices are output endpoints and can echo older values back into the binding path.
 
 On Hubitat 2.5.0.159, MQTT Import does not support arbitrary string command capabilities such as `Notification`. The manager app can use text-command devices if another driver exposes them, but MQTT Import alone cannot currently update OpenHASP label text for a live countdown.
 
 To update labels from Hubitat, enable `Create OpenHASP MQTT text label devices` in the panel app and enter the broker URI, username, and password. The app will create `OpenHASP Text Label` child devices for rows that have a level label object id, then publish the target device's current level to topics such as `hasp/bathroom_panel/command/p1b44.text` and `hasp/bathroom_panel/command/p1b54.text`. It also creates timer label devices for `p1b21.text` and `p1b13.text` by default.
+
+The same text-command driver is used for the OpenHASP backlight command topic. When screen idle handling is enabled, the app publishes `off` to `hasp/<plate>/command/backlight` when the imported idle state becomes `long`, and publishes `{"state":"on","brightness":255}` or the configured brightness when the idle state returns to `off`.
 
 ## 4. Install the Hubitat Package
 
@@ -83,9 +88,16 @@ Inside `OpenHASP Manager`, choose `Add OpenHASP panel`. Configure the child pane
 
 - Plate name: `bathroom_panel`
 - Panel label: `Bathroom Panel`
+- OpenHASP panel host/IP: `10.0.0.122` if you want Hubitat to configure the OpenHASP idle time over HTTP
 - Timer increment minutes: `1` for testing, `60` for production
 - Timer maximum minutes: `3` for testing, `180` for production
 - Create virtual lighting controls for dashboards: enabled when you want app-created Hubitat control devices for the bound lights
+- Manage screen backlight from OpenHASP idle state: enabled
+- Panel idle state device: `Bathroom Panel Idle State`
+- Turn screen off after idle seconds: `60`
+- Normal backlight brightness: `42`
+- Wake brightness: `255`
+- Configure OpenHASP idle time over HTTP when saved: enabled only when the panel host/IP is set
 
 Lighting mapping 1:
 

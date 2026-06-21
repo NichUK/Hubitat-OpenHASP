@@ -4,6 +4,7 @@
  * Licensed under the Apache License, Version 2.0.
  */
 
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
 definition(
@@ -29,6 +30,7 @@ def mainPage() {
             paragraph 'First map this panel in Hubitat MQTT Import. Then select the imported MQTT devices below and bind them to the Hubitat devices they should control.'
             input 'panelLabel', 'text', title: 'Panel label', defaultValue: 'Bathroom Panel', required: true
             input 'plateName', 'text', title: 'OpenHASP plate name', defaultValue: 'bathroom_panel', required: true
+            input 'panelHost', 'text', title: 'OpenHASP panel host/IP for HTTP configuration (optional)', required: false
             input 'manageLightingControls', 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true
             input 'manageTextLabels', 'bool', title: 'Create OpenHASP MQTT text label devices', defaultValue: true, required: true, submitOnChange: true
             if (settingEnabled(settingValue('manageTextLabels'), false)) {
@@ -36,6 +38,18 @@ def mainPage() {
                 input 'mqttUsername', 'text', title: 'MQTT username for text labels', required: false
                 input 'mqttPassword', 'password', title: 'MQTT password for text labels', required: false
                 input 'mqttRetainTextLabels', 'bool', title: 'Retain OpenHASP label text messages', defaultValue: false, required: true
+            }
+        }
+
+        section('Screen idle/backlight') {
+            input 'manageBacklight', 'bool', title: 'Manage screen backlight from OpenHASP idle state', defaultValue: true, required: true, submitOnChange: true
+            if (settingEnabled(settingValue('manageBacklight'), true)) {
+                input 'idleStateSwitch', 'capability.switch', title: 'Panel idle state device mapped from state/idle', multiple: false, required: false
+                input 'screenIdleSeconds', 'number', title: 'Turn screen off after idle seconds', defaultValue: 60, required: true
+                input 'screenBacklightBrightness', 'number', title: 'Normal backlight brightness (1-255)', defaultValue: 42, required: true
+                input 'screenWakeBrightness', 'number', title: 'Wake brightness (1-255)', defaultValue: 255, required: true
+                input 'configurePanelGui', 'bool', title: 'Configure OpenHASP idle time over HTTP when saved', defaultValue: false, required: true, submitOnChange: true
+                input 'backlightCommandDevice', 'capability.notification', title: 'Panel backlight command device (optional)', multiple: false, required: false
             }
         }
 
@@ -102,10 +116,14 @@ void initialize() {
         lightMappings().each { Map mapping -> managedLevelTextDevice(mapping, true) }
         managedTimerTextDevice('timer', true)
         managedTimerTextDevice('state', true)
+        if (settingEnabled(settingValue('manageBacklight'), true)) {
+            managedBacklightCommandDevice(true)
+        }
     }
     if (settingEnabled(settingValue('manageUfhVirtualSwitch'), true)) {
         managedTimerSwitch()
     }
+    configurePanelGuiIfRequested()
     subscribePanelControls()
     subscribeTargets()
     syncAllTargetsToPanel()
@@ -124,6 +142,8 @@ void subscribePanelControls() {
     def timerSwitch = settingValue('timerPanelSwitch')
     if (button) subscribe(button, 'pushed', timerPanelButtonHandler)
     if (timerSwitch) subscribe(timerSwitch, 'switch', timerPanelSwitchHandler)
+    def idleSwitch = settingValue('idleStateSwitch')
+    if (idleSwitch) subscribe(idleSwitch, 'switch', idleStateSwitchHandler)
 }
 
 void subscribeTargets() {
@@ -249,6 +269,17 @@ void timerPanelSwitchHandler(evt) {
 
 void timerTargetSwitchHandler(evt) {
     sendTextCommand(activeTimerStateTextDevice(), evt.value == 'on' ? 'ON' : 'OFF')
+}
+
+void idleStateSwitchHandler(evt) {
+    String idleValue = normalizeIdleValue(evt?.value)
+    if (debugLogging) log.debug "Panel idle state ${idleValue}"
+    if (idleValue == 'idle') {
+        sendTextCommand(activeBacklightCommandDevice(), 'off')
+    } else if (idleValue == 'active') {
+        int brightness = Math.max(1, Math.min(255, safeInt(settingValue('screenWakeBrightness'), 255)))
+        sendTextCommand(activeBacklightCommandDevice(), JsonOutput.toJson([state: 'on', brightness: brightness]))
+    }
 }
 
 void syncAllTargetsToPanel() {
@@ -537,6 +568,10 @@ def activeTimerStateTextDevice() {
     settingValue('timerStateTextDevice') ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedTimerTextDevice('state', false) : null)
 }
 
+def activeBacklightCommandDevice() {
+    settingValue('backlightCommandDevice') ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedBacklightCommandDevice(false) : null)
+}
+
 def managedLevelTextDevice(Map mapping, boolean configure = false) {
     if (!mapping.levelTextObject) return null
     String plate = settingValue('plateName') ?: 'panel'
@@ -666,6 +701,79 @@ String timerTextObjectId(String kind) {
     hasSettingValue(value) ? "${value}" : (kind == 'state' ? 'p1b13' : 'p1b21')
 }
 
+def managedBacklightCommandDevice(boolean configure = false) {
+    String plate = settingValue('plateName') ?: 'panel'
+    String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
+    String dni = "openhasp-${plate}-backlight-command"
+    String label = "${labelBase} Backlight Command"
+    def child = getChildDevice(dni)
+    boolean created = false
+    if (!child) {
+        child = addChildDevice('nichuk', 'OpenHASP Text Label', dni, [
+            name: label,
+            label: label,
+            isComponent: false
+        ])
+        created = true
+    } else if (child.displayName != label) {
+        try {
+            child.setLabel(label)
+        } catch (Exception ignored) {
+        }
+    }
+    if (configure || created) {
+        try {
+            child.configureFromApp(
+                "${settingValue('mqttBrokerUri') ?: ''}",
+                "${settingValue('mqttUsername') ?: ''}",
+                "${settingValue('mqttPassword') ?: ''}",
+                "hasp/${plate}/command/backlight",
+                false
+            )
+        } catch (Exception e) {
+            log.warn "Could not configure ${label}: ${e.message}"
+        }
+    }
+    child
+}
+
+void configurePanelGuiIfRequested() {
+    if (!settingEnabled(settingValue('configurePanelGui'), false)) return
+    String host = "${settingValue('panelHost') ?: ''}".trim()
+    if (!host) {
+        log.warn 'OpenHASP panel host/IP is required to configure screen idle time over HTTP'
+        return
+    }
+    int idleSeconds = Math.max(0, safeInt(settingValue('screenIdleSeconds'), 60))
+    int backlightBrightness = Math.max(1, Math.min(255, safeInt(settingValue('screenBacklightBrightness'), 42)))
+    Map body = [
+        idle1: 0,
+        idle2: idleSeconds,
+        bckl: backlightBrightness,
+        bcklinv: 0
+    ]
+    try {
+        httpPost([
+            uri: normalizedPanelBaseUri(host),
+            path: '/api/config/gui/',
+            contentType: 'application/json',
+            body: JsonOutput.toJson(body)
+        ]) { resp ->
+            if (debugLogging) log.debug "Configured OpenHASP GUI idle settings: ${resp?.status}"
+        }
+    } catch (Exception e) {
+        log.warn "Could not configure OpenHASP GUI idle settings at ${host}: ${e.message}"
+    }
+}
+
+String normalizedPanelBaseUri(String host) {
+    String value = host.trim()
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+        return value
+    }
+    "http://${value}"
+}
+
 def activeTimerTarget() {
     settingValue('timerTargetSwitch') ?: (settingEnabled(settingValue('manageUfhVirtualSwitch'), true) ? managedTimerSwitch() : null)
 }
@@ -765,6 +873,18 @@ String normalizeSwitchValue(Object value) {
     }
     String text = "${normalized}".trim().toLowerCase()
     text in ['1', 'true', 'on', 'yes'] ? 'on' : 'off'
+}
+
+String normalizeIdleValue(Object value) {
+    Object normalized = openHaspPayloadValue(value)
+    String text = "${normalized ?: ''}".trim().toLowerCase()
+    if (text in ['long', 'idle', 'on', '1', 'true', 'yes']) {
+        return 'idle'
+    }
+    if (text in ['off', 'active', '0', 'false', 'no']) {
+        return 'active'
+    }
+    text ? text : 'active'
 }
 
 int normalizeLevelValue(Object value, int fallback = 100) {

@@ -11,6 +11,7 @@ This package uses Hubitat's built-in MQTT integrations as the Hubitat-facing MQT
 - `OpenHASP Panel` child apps subscribe to imported devices, mirror real device state back to the panel, and run timers.
 - Optional app-created virtual controls provide Hubitat/dashboard devices that command the real devices and stay mirrored with the panel.
 - Optional app-created text label devices publish current level labels such as `p1b44.text` and `p1b54.text`, plus UFH timer labels such as `p1b21.text` and `p1b13.text`.
+- Optional screen idle handling turns the OpenHASP backlight off from `state/idle` and wakes it on the next tap.
 
 The MCP server used during development is not part of the runtime. Once installed, this package runs entirely on the Hubitat hub and the MQTT broker.
 
@@ -25,6 +26,7 @@ The default control map matches a 480x480 `bathroom_panel` page:
 | `p1b43` | Switch raw event + SwitchLevel command | Office Main level |
 | `p1b52` | Switch | Bedroom Main switch |
 | `p1b53` | Switch raw event + SwitchLevel command | Bedroom Main level |
+| `idle` | Switch | Screen idle/wake state |
 
 For testing, the timer defaults to a 1 minute increment and a 3 minute maximum. For production, set the timer preferences to 60 and 180 minutes.
 
@@ -56,9 +58,10 @@ Install the app from the raw GitHub URL listed in `packageManifest.json`:
 6. Choose `Add OpenHASP panel`.
 7. Set the plate name and add mapping rows for each control group.
 8. Select the MQTT Import panel devices and the real Hubitat target devices for each row.
-9. Leave `Create virtual lighting controls for dashboards` enabled if you want Hubitat-facing control devices for the bound lights.
-10. Leave `Create and use a safe virtual timer switch` enabled until the real heating actuator is identified.
-11. Save the panel child app.
+9. In screen idle/backlight settings, select the MQTT Import device mapped from `hasp/<plate>/state/idle` and set the idle timeout.
+10. Leave `Create virtual lighting controls for dashboards` enabled if you want Hubitat-facing control devices for the bound lights.
+11. Leave `Create and use a safe virtual timer switch` enabled until the real heating actuator is identified.
+12. Save the panel child app.
 
 The app can create virtual lighting controls and the safe UFH virtual switch when requested. It does not connect directly to MQTT.
 
