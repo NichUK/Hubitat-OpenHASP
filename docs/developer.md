@@ -6,6 +6,8 @@ Hubitat's MQTT client interface is available to drivers, not apps. For normal op
 
 OpenHASP publishes object events as JSON payloads. MQTT Import's manual mapper maps whole payloads to attributes and supports enum value mappings, but it does not currently provide JSON-path extraction or arbitrary string command capabilities. For slider controls, use a raw Switch event device for the OpenHASP JSON state topic and a separate SwitchLevel command device for the OpenHASP `.val` command topic.
 
+Dimmer updates have three possible sources: the OpenHASP raw event device, the app-created Hubitat control, and the real target device. When a user requests a new level from the panel or app-created control, `OpenHASP Panel` records that level briefly and mirrors it immediately to the panel command device and virtual control. During that short pending window, older target level reports are ignored so the panel slider cannot bounce back to the previous level before the real device finishes reporting the new one.
+
 ```mermaid
 flowchart LR
     OpenHASP["OpenHASP plate"] -->|"MQTT state events"| Broker["MQTT broker"]

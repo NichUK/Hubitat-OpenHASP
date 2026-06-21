@@ -101,7 +101,6 @@ void subscribePanelControls() {
     lightMappings().each { Map mapping ->
         if (mapping.panelSwitch) subscribe(mapping.panelSwitch, 'switch', lightPanelSwitchHandler)
         if (mapping.panelLevelEvent) subscribe(mapping.panelLevelEvent, 'switch', lightPanelLevelEventHandler)
-        if (mapping.panelLevelCommand) subscribe(mapping.panelLevelCommand, 'level', lightPanelLevelHandler)
     }
     def button = settingValue('timerPanelButton')
     def timerSwitch = settingValue('timerPanelSwitch')
@@ -129,17 +128,19 @@ void subscribeTargets() {
 
 void lightPanelSwitchHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'panelSwitch')
-    if (mapping) commandSwitch(mapping.target, normalizeSwitchValue(evt.value))
+    if (mapping) {
+        commandSwitch(mapping.target, normalizeSwitchValue(evt.value))
+    }
 }
 
 void lightPanelLevelEventHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'panelLevelEvent')
-    if (mapping) commandLevel(mapping.target, normalizeLevelValue(evt.value, 100))
-}
-
-void lightPanelLevelHandler(evt) {
-    Map mapping = lightMappingForDevice(evt.deviceId, 'panelLevelCommand')
-    if (mapping) commandLevel(mapping.target, normalizeLevelValue(evt.value, 100))
+    if (mapping) {
+        int level = normalizeLevelValue(evt.value, 100)
+        recordPendingTargetLevel(mapping, level)
+        mirrorRequestedLevel(mapping, level)
+        commandLevel(mapping.target, level)
+    }
 }
 
 void lightControlSwitchHandler(evt) {
@@ -149,7 +150,12 @@ void lightControlSwitchHandler(evt) {
 
 void lightControlLevelHandler(evt) {
     Map mapping = lightMappingForControl(evt.deviceId)
-    if (mapping) commandLevel(mapping.target, evt.value)
+    if (mapping) {
+        int level = normalizeLevelValue(evt.value, 100)
+        recordPendingTargetLevel(mapping, level)
+        mirrorRequestedLevel(mapping, level)
+        commandLevel(mapping.target, level)
+    }
 }
 
 void lightTargetSwitchHandler(evt) {
@@ -162,9 +168,14 @@ void lightTargetSwitchHandler(evt) {
 void lightTargetLevelHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'target')
     if (!mapping) return
-    commandLevelOnly(mapping.panelLevelCommand, evt.value)
-    sendTextCommand(mapping.levelTextDevice, "${safeInt(evt.value, 0)}")
-    syncLightingControl(mapping, mapping.target?.currentSwitch ?: 'on', evt.value)
+    int level = safeInt(evt.value, 100)
+    if (suppressStaleTargetLevel(mapping, level)) {
+        if (debugLogging) log.debug "Ignoring stale ${mapping.name} level report ${level}; waiting for pending level"
+        return
+    }
+    commandLevelOnly(mapping.panelLevelCommand, level)
+    sendTextCommand(mapping.levelTextDevice, "${level}")
+    syncLightingControl(mapping, mapping.target?.currentSwitch ?: 'on', level)
 }
 
 void timerPanelButtonHandler(evt) {
@@ -264,6 +275,42 @@ Map lightMappingForControl(Object deviceId) {
 
 boolean sameDevice(device, Object deviceId) {
     device && "${device.id}" == "${deviceId}"
+}
+
+void mirrorRequestedLevel(Map mapping, int level) {
+    int bounded = Math.max(1, Math.min(100, level))
+    commandLevelOnly(mapping.panelLevelCommand, bounded)
+    sendTextCommand(mapping.levelTextDevice, "${bounded}")
+    syncLightingControl(mapping, 'on', bounded)
+}
+
+void recordPendingTargetLevel(Map mapping, int level) {
+    Map pending = (state.pendingTargetLevels ?: [:]) as Map
+    pending["${mapping.index}"] = [
+        level: Math.max(1, Math.min(100, level)),
+        until: now() + 8000L
+    ]
+    state.pendingTargetLevels = pending
+}
+
+boolean suppressStaleTargetLevel(Map mapping, int reportedLevel) {
+    Map pending = (state.pendingTargetLevels ?: [:]) as Map
+    Map entry = pending["${mapping.index}"] as Map
+    if (!entry) {
+        return false
+    }
+    if (now() > safeLong(entry.until, 0L)) {
+        pending.remove("${mapping.index}")
+        state.pendingTargetLevels = pending
+        return false
+    }
+    int desiredLevel = safeInt(entry.level, reportedLevel)
+    if (Math.abs(reportedLevel - desiredLevel) <= 1) {
+        pending.remove("${mapping.index}")
+        state.pendingTargetLevels = pending
+        return false
+    }
+    true
 }
 
 def activeLightingControl(Map mapping) {
@@ -376,6 +423,14 @@ long epochSeconds() {
 int safeInt(Object value, int fallback = 0) {
     try {
         return "${value}".toBigDecimal().intValue()
+    } catch (ignored) {
+        return fallback
+    }
+}
+
+long safeLong(Object value, long fallback = 0L) {
+    try {
+        return "${value}".toBigDecimal().longValue()
     } catch (ignored) {
         return fallback
     }

@@ -45,7 +45,7 @@ Map OpenHASP topics to Hubitat devices. The bathroom panel uses these mappings:
 
 For switch state value mappings, map OpenHASP payloads such as `{"event":"up","val":1}` to `on` and `{"event":"up","val":0}` to `off`.
 
-For dimmers, OpenHASP publishes slider events as JSON such as `{"event":"changed","val":38}`. MQTT Import does not currently extract JSON fields into numeric attributes, so create a Switch event device with no value mappings for the state topic and a separate SwitchLevel command device for the `.val` command topic. `OpenHASP Manager` parses the raw event device value and mirrors Hubitat state back through the command device.
+For dimmers, OpenHASP publishes slider events as JSON such as `{"event":"changed","val":38}`. MQTT Import does not currently extract JSON fields into numeric attributes, so create a Switch event device with no value mappings for the state topic and a separate SwitchLevel command device for the `.val` command topic. `OpenHASP Manager` parses the raw event device value and mirrors Hubitat state back through the command device. Do not subscribe the panel app to the SwitchLevel command device as an input; command devices are output endpoints and can echo older values back into the binding path.
 
 On Hubitat 2.5.0.159, MQTT Import does not support arbitrary string command capabilities such as `Notification`. The manager app can use text-command devices if another driver exposes them, but MQTT Import alone cannot currently update OpenHASP label text for a live countdown.
 
