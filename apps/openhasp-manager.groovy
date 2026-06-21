@@ -224,16 +224,18 @@ void controlLevelHandler(evt) {
 }
 
 void handleSwitchMessage(Map plate, Map row, String payload) {
+    if (!openHaspEventIsAction(payload)) return
     commandTargetFromRow(row, normalizeSwitchValue(payload), currentTargetLevel(row), 'panel')
 }
 
 void handleDimmerMessage(Map plate, Map row, String payload) {
+    if (!openHaspEventIsAction(payload)) return
     int level = Math.max(1, Math.min(100, normalizeLevelValue(payload, 100)))
     commandTargetFromRow(row, 'on', level, 'panel')
 }
 
 void handleTimerMessage(Map plate, Map row, String payload) {
-    if (!timerEventIsAction(payload) || suppressTimerBounce(row)) return
+    if (!openHaspEventIsAction(payload) || suppressTimerBounce(row)) return
     long nowSeconds = epochSeconds()
     int incrementSeconds = Math.max(1, safeInt(row.timerIncrementMinutes, 1)) * 60
     int maxSeconds = Math.max(incrementSeconds, safeInt(row.timerMaxMinutes, 3) * 60)
@@ -657,7 +659,7 @@ Map parseJsonMap(Object value) {
     }
 }
 
-boolean timerEventIsAction(Object value) {
+boolean openHaspEventIsAction(Object value) {
     Map event = openHaspEventPayload(value)
     if (!event.containsKey('event')) return true
     "${event.event ?: ''}".toLowerCase() in ['up', 'changed', 'short', 'release', 'released']
