@@ -2,14 +2,16 @@
 
 Reusable Hubitat integration for OpenHASP MQTT touch panels.
 
-Version 0.4.0 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
+Version 0.4.1 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
 
 The MCP/server tooling used during development is not part of day-to-day operation. Once installed, the integration runs on the Hubitat hub and talks to the configured MQTT broker.
 
 ## Architecture
 
 - `OpenHASP Manager` is a single configuration page for all plates.
-- Each plate appears as a collapsible section with MQTT settings, screen/backlight settings, and mapping rows.
+- Shared MQTT broker settings appear in one collapsible manager section.
+- Shared screen/backlight settings appear in one collapsible manager section.
+- Each plate appears as a collapsible section with identity settings and compact mapping rows.
 - Each plate gets one child `OpenHASP Connector` driver device.
 - The connector subscribes to `hasp/<plate>/state/#` and `hasp/<plate>/LWT`.
 - The manager publishes state back to `hasp/<plate>/command/...` and `hasp/<plate>/config/...`.
@@ -51,6 +53,8 @@ https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.j
 
 Install `Hubitat OpenHASP`.
 
+HPM installs both required pieces: the `OpenHASP Manager` app and the `OpenHASP Connector` driver. Hubitat's manual `Add user app` screen only adds the app code; when installing manually, add the driver separately from `Drivers Code`.
+
 ### Manual Install
 
 Install:
@@ -64,10 +68,11 @@ Install:
 2. Set the OpenHASP plate name, for example `bathroom_panel`.
 3. Open Hubitat Apps and add `OpenHASP Manager`.
 4. Use the default bathroom plate or add another plate.
-5. Enter MQTT broker host, port, username, and password for that plate.
-6. Select the real Hubitat target devices for each mapping row.
-7. Leave virtual controls enabled if you want dashboard-friendly child devices.
-8. Save the app.
+5. Enter MQTT broker host, port, username, and password in the top MQTT broker section.
+6. Set screen idle/backlight defaults in the next section.
+7. Select the real Hubitat target devices for each mapping row.
+8. Leave virtual controls enabled if you want dashboard-friendly child devices.
+9. Save the app.
 
 The connector will create a child device, connect to MQTT, subscribe to panel state topics, publish retained GUI config, and mirror Hubitat target state back to OpenHASP command topics.
 

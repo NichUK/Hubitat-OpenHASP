@@ -47,11 +47,11 @@ Open Apps and add `OpenHASP Manager`.
 The page contains one collapsible section per OpenHASP plate. Each section contains:
 
 - plate label and plate name
-- MQTT broker host, port, username, and password
 - connector status and reconnect/refresh button
-- screen idle/backlight settings
-- mapping rows
+- compact mapping rows
 - add/remove mapping controls
+
+MQTT broker settings and screen idle/backlight settings live in their own collapsible sections above the plate sections.
 
 The app stores plate configuration using stable internal plate IDs, so labels can be renamed without breaking child devices.
 
@@ -60,7 +60,6 @@ The app stores plate configuration using stable internal plate IDs, so labels ca
 The first install creates a `Bathroom Panel` section using:
 
 - Plate name: `bathroom_panel`
-- MQTT base topic: `hasp`
 - Timer increment minutes: `1` for testing, `60` for production
 - Timer maximum minutes: `3` for testing, `180` for production
 - Create virtual lighting controls: enabled
@@ -83,7 +82,18 @@ For the lighting rows, select the real Hubitat devices:
 
 For the timer row, leave the target blank to use the virtual UFH switch until the real heating actuator is identified.
 
-## 5. Screen Idle And Backlight
+## 5. MQTT Broker
+
+Set these once for the manager:
+
+- Base topic: `hasp`
+- Host: your MQTT broker host or IP
+- Port: usually `1883`
+- Username/password: optional, depending on your broker
+
+Each plate connector inherits these shared broker settings.
+
+## 6. Screen Idle And Backlight
 
 Default screen settings:
 
@@ -104,7 +114,7 @@ When the plate publishes `long`, `idle`, `on`, `1`, or `true` to `state/idle`, t
 
 When the plate publishes `off`, `active`, `0`, or `false` to `state/idle`, the app publishes wake JSON to `command/backlight`.
 
-## 6. Binding Model
+## 7. Binding Model
 
 Incoming MQTT messages are routed by plate topic prefix, then matched to a row by incoming suffix.
 
@@ -116,7 +126,7 @@ Target device state changes publish back to OpenHASP command topics. The app del
 
 Timer rows add the configured increment on each valid press, cap at the configured maximum, keep the selected or virtual timer switch on while active, and switch it off when the countdown expires.
 
-## 7. Devices Created
+## 8. Devices Created
 
 Each plate creates:
 
@@ -130,7 +140,7 @@ When a timer row has no selected target and virtual timer is enabled, the app cr
 
 - `<Plate label> <Timer label>`
 
-## 8. Acceptance Checks
+## 9. Acceptance Checks
 
 - Tapping Office Main on the panel turns the Hubitat Office Main device on/off.
 - Moving the Office Main slider changes the Hubitat Office Main level.

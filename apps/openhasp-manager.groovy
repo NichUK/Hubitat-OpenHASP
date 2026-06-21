@@ -26,34 +26,38 @@ preferences {
 def mainPage() {
     dynamicPage(name: 'mainPage', title: 'OpenHASP Manager', install: true, uninstall: true) {
         ensureDefaultPlateState()
+        Map mqtt = mqttState()
+        Map screen = screenState()
+        section('MQTT broker', hideable: true, hidden: false) {
+            input mqttSetting('baseTopic'), 'text', title: 'Base topic', defaultValue: mqtt.baseTopic ?: 'hasp', required: true, width: 2
+            input mqttSetting('brokerHost'), 'text', title: 'Host', defaultValue: mqtt.brokerHost ?: '10.0.0.65', required: true, width: 3
+            input mqttSetting('brokerPort'), 'number', title: 'Port', defaultValue: mqtt.brokerPort ?: 1883, required: true, width: 2
+            input mqttSetting('mqttUsername'), 'text', title: 'Username', defaultValue: mqtt.mqttUsername ?: '', required: false, width: 2
+            input mqttSetting('mqttPassword'), 'password', title: 'Password', required: false, width: 3
+        }
+        section('Screen idle/backlight', hideable: true, hidden: true) {
+            input screenSetting('idleTopic'), 'text', title: 'Idle state suffix', defaultValue: screen.idleTopic ?: 'state/idle', required: true, width: 3
+            input screenSetting('backlightTopic'), 'text', title: 'Backlight command suffix', defaultValue: screen.backlightTopic ?: 'command/backlight', required: true, width: 3
+            input screenSetting('guiConfigTopic'), 'text', title: 'GUI config suffix', defaultValue: screen.guiConfigTopic ?: 'config/gui', required: true, width: 3
+            input screenSetting('screenIdleSeconds'), 'number', title: 'Idle seconds', defaultValue: screen.screenIdleSeconds ?: 60, required: true, width: 3
+            input screenSetting('screenBacklightBrightness'), 'number', title: 'Normal brightness', defaultValue: screen.screenBacklightBrightness ?: 42, required: true, width: 3
+            input screenSetting('screenWakeBrightness'), 'number', title: 'Wake brightness', defaultValue: screen.screenWakeBrightness ?: 255, required: true, width: 3
+        }
         section('OpenHASP plates') {
-            paragraph 'Each plate has its own MQTT connector and mapping rows. The connector talks directly to the OpenHASP hasp/<plate>/... topics.'
+            paragraph 'Each plate has its own MQTT connector and mapping rows. The connector uses the shared broker settings above.'
             input 'addPlate', 'button', title: 'Add plate'
         }
         plateIds().eachWithIndex { String plateId, int index ->
             Map plate = plateState(plateId)
             section("${plate.label ?: plate.plateName ?: 'OpenHASP Plate'}", hideable: true, hidden: index > 0) {
                 input plateSetting(plateId, 'enabled'), 'bool', title: 'Enabled', defaultValue: plate.enabled != false, required: true, submitOnChange: true
-                input plateSetting(plateId, 'label'), 'text', title: 'Plate label', defaultValue: plate.label ?: 'Bathroom Panel', required: true
-                input plateSetting(plateId, 'plateName'), 'text', title: 'OpenHASP plate name', defaultValue: plate.plateName ?: 'bathroom_panel', required: true
-                input plateSetting(plateId, 'baseTopic'), 'text', title: 'MQTT base topic', defaultValue: plate.baseTopic ?: 'hasp', required: true
-                input plateSetting(plateId, 'brokerHost'), 'text', title: 'MQTT broker host', defaultValue: plate.brokerHost ?: '10.0.0.65', required: true
-                input plateSetting(plateId, 'brokerPort'), 'number', title: 'MQTT broker port', defaultValue: plate.brokerPort ?: 1883, required: true
-                input plateSetting(plateId, 'mqttUsername'), 'text', title: 'MQTT username', required: false
-                input plateSetting(plateId, 'mqttPassword'), 'password', title: 'MQTT password', required: false
-                input plateSetting(plateId, 'createVirtualControls'), 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true
+                input plateSetting(plateId, 'label'), 'text', title: 'Plate label', defaultValue: plate.label ?: 'Bathroom Panel', required: true, width: 4
+                input plateSetting(plateId, 'plateName'), 'text', title: 'OpenHASP plate name', defaultValue: plate.plateName ?: 'bathroom_panel', required: true, width: 4
+                input plateSetting(plateId, 'createVirtualControls'), 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true, width: 4
 
                 paragraph "Connector device: ${connectorDevice(plateId)?.displayName ?: 'created when saved'}"
                 input refreshButtonName(plateId), 'button', title: 'Reconnect / refresh this plate'
                 input removePlateButtonName(plateId), 'button', title: 'Remove this plate'
-
-                paragraph '<b>Screen idle/backlight</b>'
-                input plateSetting(plateId, 'idleTopic'), 'text', title: 'Idle state topic suffix', defaultValue: plate.idleTopic ?: 'state/idle', required: true
-                input plateSetting(plateId, 'backlightTopic'), 'text', title: 'Backlight command topic suffix', defaultValue: plate.backlightTopic ?: 'command/backlight', required: true
-                input plateSetting(plateId, 'guiConfigTopic'), 'text', title: 'GUI config topic suffix', defaultValue: plate.guiConfigTopic ?: 'config/gui', required: true
-                input plateSetting(plateId, 'screenIdleSeconds'), 'number', title: 'Turn screen off after idle seconds', defaultValue: plate.screenIdleSeconds ?: 60, required: true
-                input plateSetting(plateId, 'screenBacklightBrightness'), 'number', title: 'Normal backlight brightness (1-255)', defaultValue: plate.screenBacklightBrightness ?: 42, required: true
-                input plateSetting(plateId, 'screenWakeBrightness'), 'number', title: 'Wake brightness (1-255)', defaultValue: plate.screenWakeBrightness ?: 255, required: true
 
                 paragraph '<b>Mapping rows</b>'
                 rowIds(plateId).eachWithIndex { String rowId, int rowIndex ->
@@ -71,29 +75,31 @@ def mainPage() {
 void mappingInputs(String plateId, String rowId, int rowNumber) {
     Map row = rowState(plateId, rowId)
     String prefix = rowSetting(plateId, rowId, '')
-    paragraph "<b>Row ${rowNumber}</b>"
-    input "${prefix}enabled", 'bool', title: 'Enabled', defaultValue: row.enabled != false, required: true, submitOnChange: true
-    input "${prefix}label", 'text', title: 'Label', defaultValue: row.label ?: "Row ${rowNumber}", required: false
+    paragraph "<hr><b>Row ${rowNumber}</b>"
+    input "${prefix}enabled", 'bool', title: 'On', defaultValue: row.enabled != false, required: true, submitOnChange: true, width: 1
+    input "${prefix}label", 'text', title: 'Label', defaultValue: row.label ?: "Row ${rowNumber}", required: false, width: 2
     input "${prefix}type", 'enum',
         title: 'Type',
         options: [switch: 'Switch', dimmer: 'Dimmer', timerButton: 'Timer button'],
         defaultValue: row.type ?: 'switch',
         required: true,
-        submitOnChange: true
-    input "${prefix}incoming", 'text', title: 'Incoming topic suffix', defaultValue: row.incoming ?: '', required: false
-    input "${prefix}outgoing", 'text', title: 'Outgoing command topic suffix', defaultValue: row.outgoing ?: '', required: false
-    input "${prefix}labelTopic", 'text', title: 'Optional label topic suffix', defaultValue: row.labelTopic ?: '', required: false
+        submitOnChange: true,
+        width: 1
+    input "${prefix}incoming", 'text', title: 'Incoming', defaultValue: row.incoming ?: '', required: false, width: 2
+    input "${prefix}outgoing", 'text', title: 'Outgoing', defaultValue: row.outgoing ?: '', required: false, width: 2
     String type = settingString("${prefix}type", row.type ?: 'switch')
     if (type == 'dimmer') {
-        input "${prefix}targetDimmer", 'capability.switchLevel', title: 'Target dimmer', multiple: false, required: false
+        input "${prefix}targetDimmer", 'capability.switchLevel', title: 'Target', multiple: false, required: false, width: 2
+        input "${prefix}labelTopic", 'text', title: 'Level label', defaultValue: row.labelTopic ?: '', required: false, width: 2
     } else {
-        input "${prefix}targetSwitch", 'capability.switch', title: type == 'timerButton' ? 'Timer target switch' : 'Target switch', multiple: false, required: false
+        input "${prefix}targetSwitch", 'capability.switch', title: type == 'timerButton' ? 'Timer target' : 'Target', multiple: false, required: false, width: 2
+        input "${prefix}labelTopic", 'text', title: type == 'timerButton' ? 'Button label' : 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
     }
     if (type == 'timerButton') {
-        input "${prefix}timerIncrementMinutes", 'number', title: 'Timer increment minutes', defaultValue: row.timerIncrementMinutes ?: 1, required: true
-        input "${prefix}timerMaxMinutes", 'number', title: 'Timer maximum minutes', defaultValue: row.timerMaxMinutes ?: 3, required: true
-        input "${prefix}stateLabelTopic", 'text', title: 'Optional state label topic suffix', defaultValue: row.stateLabelTopic ?: 'command/p1b13.text', required: false
-        input "${prefix}createVirtualTimer", 'bool', title: 'Create virtual timer switch when target is blank', defaultValue: true, required: true
+        input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
+        input "${prefix}timerMaxMinutes", 'number', title: 'Max min', defaultValue: row.timerMaxMinutes ?: 3, required: true, width: 2
+        input "${prefix}stateLabelTopic", 'text', title: 'State label', defaultValue: row.stateLabelTopic ?: 'command/p1b13.text', required: false, width: 3
+        input "${prefix}createVirtualTimer", 'bool', title: 'Virtual if blank', defaultValue: true, required: true, width: 2
     }
     input removeRowButtonName(plateId, rowId), 'button', title: "Remove row ${rowNumber}"
 }
@@ -493,15 +499,13 @@ void ensureDefaultPlateState(boolean addIfEmpty = true) {
 }
 
 void syncStateFromSettings() {
+    syncGlobalStateFromSettings()
     Map plates = (state.plates ?: [:]) as Map
     plates.keySet().each { String plateId ->
         Map plate = (plates[plateId] ?: [:]) as Map
         plate.enabled = settingEnabled(settings[plateSetting(plateId, 'enabled')], plate.enabled != false)
-        ['label', 'plateName', 'baseTopic', 'brokerHost', 'mqttUsername', 'mqttPassword', 'idleTopic', 'backlightTopic', 'guiConfigTopic'].each { String key ->
+        ['label', 'plateName'].each { String key ->
             if (settings.containsKey(plateSetting(plateId, key))) plate[key] = settings[plateSetting(plateId, key)]
-        }
-        ['brokerPort', 'screenIdleSeconds', 'screenBacklightBrightness', 'screenWakeBrightness'].each { String key ->
-            if (settings.containsKey(plateSetting(plateId, key))) plate[key] = safeInt(settings[plateSetting(plateId, key)], safeInt(plate[key], 0))
         }
         plate.createVirtualControls = settingEnabled(settings[plateSetting(plateId, 'createVirtualControls')], settingEnabled(plate.createVirtualControls, true))
         plate.rows = ((plate.rows ?: []) as List).collect { Map row ->
@@ -525,10 +529,35 @@ void syncStateFromSettings() {
     state.plates = plates
 }
 
+void syncGlobalStateFromSettings() {
+    Map mqtt = mqttState()
+    ['baseTopic', 'brokerHost', 'mqttUsername', 'mqttPassword'].each { String key ->
+        if (settings.containsKey(mqttSetting(key))) mqtt[key] = settings[mqttSetting(key)]
+    }
+    if (settings.containsKey(mqttSetting('brokerPort'))) {
+        mqtt.brokerPort = safeInt(settings[mqttSetting('brokerPort')], safeInt(mqtt.brokerPort, 1883))
+    }
+
+    Map screen = screenState()
+    ['idleTopic', 'backlightTopic', 'guiConfigTopic'].each { String key ->
+        if (settings.containsKey(screenSetting(key))) screen[key] = settings[screenSetting(key)]
+    }
+    ['screenIdleSeconds', 'screenBacklightBrightness', 'screenWakeBrightness'].each { String key ->
+        if (settings.containsKey(screenSetting(key))) screen[key] = safeInt(settings[screenSetting(key)], safeInt(screen[key], 0))
+    }
+
+    state.mqtt = mqtt
+    state.screen = screen
+}
+
 List<Map> activePlateConfigs() {
     syncStateFromSettings()
+    Map mqtt = mqttState()
+    Map screen = screenState()
     ((state.plates ?: [:]) as Map).collect { String id, Map plate ->
         Map copy = new LinkedHashMap(plate)
+        copy.putAll(mqtt)
+        copy.putAll(screen)
         copy.id = id
         copy.rows = ((copy.rows ?: []) as List).collect { Map row ->
             Map rowCopy = new LinkedHashMap(row)
@@ -545,6 +574,35 @@ List<String> plateIds() {
 
 Map plateState(String plateId) {
     ((state.plates ?: [:]) as Map)[plateId] ?: [:]
+}
+
+Map mqttState() {
+    Map existing = (state.mqtt ?: [:]) as Map
+    Map source = firstPlateConfig()
+    defaultMqttConfig() + [
+        baseTopic: existing.baseTopic ?: source.baseTopic,
+        brokerHost: existing.brokerHost ?: source.brokerHost,
+        brokerPort: existing.brokerPort ?: source.brokerPort,
+        mqttUsername: existing.mqttUsername ?: source.mqttUsername,
+        mqttPassword: existing.mqttPassword ?: source.mqttPassword
+    ].findAll { it.value != null }
+}
+
+Map screenState() {
+    Map existing = (state.screen ?: [:]) as Map
+    Map source = firstPlateConfig()
+    defaultScreenConfig() + [
+        idleTopic: existing.idleTopic ?: source.idleTopic,
+        backlightTopic: existing.backlightTopic ?: source.backlightTopic,
+        guiConfigTopic: existing.guiConfigTopic ?: source.guiConfigTopic,
+        screenIdleSeconds: existing.screenIdleSeconds ?: source.screenIdleSeconds,
+        screenBacklightBrightness: existing.screenBacklightBrightness ?: source.screenBacklightBrightness,
+        screenWakeBrightness: existing.screenWakeBrightness ?: source.screenWakeBrightness
+    ].findAll { it.value != null }
+}
+
+Map firstPlateConfig() {
+    (((state.plates ?: [:]) as Map).values() as List).find { it instanceof Map } ?: [:]
 }
 
 List<String> rowIds(String plateId) {
@@ -571,18 +629,28 @@ Map defaultPlate(String id, String label, String plateName) {
     [
         label: label,
         plateName: plateName,
-        baseTopic: 'hasp',
-        brokerHost: '10.0.0.65',
-        brokerPort: 1883,
         enabled: true,
         createVirtualControls: true,
+        rows: []
+    ]
+}
+
+Map defaultMqttConfig() {
+    [
+        baseTopic: 'hasp',
+        brokerHost: '10.0.0.65',
+        brokerPort: 1883
+    ]
+}
+
+Map defaultScreenConfig() {
+    [
         idleTopic: 'state/idle',
         backlightTopic: 'command/backlight',
         guiConfigTopic: 'config/gui',
         screenIdleSeconds: 60,
         screenBacklightBrightness: 42,
-        screenWakeBrightness: 255,
-        rows: []
+        screenWakeBrightness: 255
     ]
 }
 
@@ -614,6 +682,14 @@ String cleanTopic(Object value) {
 
 String plateSetting(String plateId, String key) {
     "plate_${plateId}_${key}"
+}
+
+String mqttSetting(String key) {
+    "mqtt_${key}"
+}
+
+String screenSetting(String key) {
+    "screen_${key}"
 }
 
 String rowSetting(String plateId, String rowId, String key) {
