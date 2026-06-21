@@ -90,6 +90,22 @@ class OpenHaspSupportSpec extends Specification {
         179       || '2:59'
     }
 
+    @Unroll
+    def 'normalizes Hubitat setting value #value to #enabled'() {
+        expect:
+        OpenHaspSupport.settingEnabled(value, true) == enabled
+
+        where:
+        value   || enabled
+        true    || true
+        false   || false
+        'true'  || true
+        'false' || false
+        '0'     || false
+        'off'   || false
+        null    || true
+    }
+
     def 'includes bathroom defaults used by the migration from the bridge'() {
         when:
         def controls = OpenHaspSupport.defaultBathroomControls()

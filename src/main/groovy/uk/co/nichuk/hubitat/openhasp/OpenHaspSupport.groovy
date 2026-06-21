@@ -118,6 +118,16 @@ class OpenHaspSupport {
         "${minutes}:${seconds.toString().padLeft(2, '0')}"
     }
 
+    static boolean settingEnabled(Object value, boolean defaultValue = true) {
+        if (value == null) {
+            return defaultValue
+        }
+        if (value instanceof Boolean) {
+            return value
+        }
+        !("${value}".trim().toLowerCase() in ['false', '0', 'no', 'off'])
+    }
+
     static Map defaultBathroomControls() {
         [
             'p1b21': [kind: 'button', name: 'Bathroom UFH Timer', role: 'timerButton', labelObject: 'p1b13'],

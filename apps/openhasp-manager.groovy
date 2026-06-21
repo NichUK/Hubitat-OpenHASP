@@ -65,7 +65,7 @@ void updated() {
 }
 
 void initialize() {
-    if (settings.manageUfhVirtualSwitch != false) {
+    if (settingEnabled(settings.manageUfhVirtualSwitch, true)) {
         managedUfhSwitch()
     }
     subscribePanelControls()
@@ -249,7 +249,7 @@ void sendTextCommand(device, String text) {
 }
 
 def activeUfhTarget() {
-    ufhTargetSwitch ?: (settings.manageUfhVirtualSwitch == false ? null : managedUfhSwitch())
+    ufhTargetSwitch ?: (settingEnabled(settings.manageUfhVirtualSwitch, true) ? managedUfhSwitch() : null)
 }
 
 def managedUfhSwitch() {
@@ -334,4 +334,14 @@ String timerButtonText(long remainingSeconds, int incrementSeconds) {
     long minutes = Math.floor(remainingSeconds / 60D) as long
     long seconds = remainingSeconds % 60
     "${minutes}:${seconds.toString().padLeft(2, '0')}"
+}
+
+boolean settingEnabled(Object value, boolean defaultValue = true) {
+    if (value == null) {
+        return defaultValue
+    }
+    if (value instanceof Boolean) {
+        return value
+    }
+    !("${value}".trim().toLowerCase() in ['false', '0', 'no', 'off'])
 }

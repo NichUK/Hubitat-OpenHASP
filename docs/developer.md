@@ -23,10 +23,10 @@ flowchart LR
 
 The local Gradle tests cover the pure logic that must remain stable across Hubitat releases:
 
-- OpenHASP JSON event parsing for the optional legacy driver
-- actionable event filtering for the optional legacy driver
+- OpenHASP JSON event parsing and actionable event filtering
 - level/brightness conversion
 - timer increment and maximum behavior
+- Hubitat app setting normalization
 - bathroom default control map
 - MQTT Import raw OpenHASP value normalization
 
