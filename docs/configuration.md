@@ -85,7 +85,7 @@ For the lighting rows, select the real Hubitat devices:
 - Office switch and Office dimmer rows: `Office Main`
 - Bedroom switch and Bedroom dimmer rows: `Bedroom Main`
 
-For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app in the OpenHASP Manager optional integrations section. Once at least one Boost Timer device is selected there, `Boost timer` appears as a mapping row type. Leave the target blank only for the built-in legacy fallback timer.
+For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app in the OpenHASP Manager optional integrations section. Once at least one selected device exposes Boost Timer metadata, `Boost timer` appears as a mapping row type. Leave the target blank only for the built-in legacy fallback timer.
 
 ## 5. MQTT Broker
 
@@ -126,6 +126,20 @@ Incoming MQTT messages are routed by plate topic prefix, then matched to a row b
 Switch rows parse OpenHASP `val` values and command the selected Hubitat switch.
 
 Dimmer rows parse OpenHASP slider `val` values and command the selected Hubitat dimmer level.
+
+Switch and dimmer are built from native Hubitat capabilities. Boost timer is different: it is exposed only when a selected integration device advertises Boost Timer metadata.
+
+Additional native Hubitat capability row types:
+
+| Type | Direction | Hubitat capability |
+| --- | --- | --- |
+| Button | OpenHASP to Hubitat | `PushableButton` |
+| Lock | Both | `Lock` |
+| Temperature | Hubitat to OpenHASP | `TemperatureMeasurement` |
+| Humidity | Hubitat to OpenHASP | `RelativeHumidityMeasurement` |
+| Illuminance | Hubitat to OpenHASP | `IlluminanceMeasurement` |
+| Contact | Hubitat to OpenHASP | `ContactSensor` |
+| Motion | Hubitat to OpenHASP | `MotionSensor` |
 
 Target device state changes publish back to OpenHASP command topics. The app deliberately avoids echoing panel-originated commands directly back to the same OpenHASP control; it waits for Hubitat target state.
 

@@ -2,7 +2,7 @@
 
 Reusable Hubitat integration for OpenHASP MQTT touch panels.
 
-Version 0.4.2 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
+Version 0.4.3 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
 
 The MCP/server tooling used during development is not part of day-to-day operation. Once installed, the integration runs on the Hubitat hub and talks to the configured MQTT broker.
 
@@ -18,6 +18,8 @@ The MCP/server tooling used during development is not part of day-to-day operati
 - Mapping rows bind OpenHASP object topics to real Hubitat devices.
 - Optional virtual lighting controls can be created for dashboards.
 - Generic boost timers are provided by the optional `Boost Timer` app and `Boost Timer Device`; OpenHASP can trigger and display them, but the timing behavior is reusable outside OpenHASP.
+
+Supported native Hubitat row types include switch, dimmer, button, lock, temperature, humidity, illuminance, contact, and motion. Optional Boost Timer rows appear when a selected integration device exposes Boost Timer metadata.
 
 ## Current Bathroom Example
 

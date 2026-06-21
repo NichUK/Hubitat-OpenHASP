@@ -55,7 +55,7 @@ def mainPage() {
             input screenSetting('screenWakeBrightness'), 'number', title: 'Wake brightness', defaultValue: screen.screenWakeBrightness ?: 255, required: true, width: 3
         }
         section('Optional integrations', hideable: true, hidden: false) {
-            input 'boostTimerDevices', 'capability.actuator', title: 'Boost Timer devices', multiple: true, required: false, submitOnChange: true
+            input 'boostTimerDevices', 'capability.pushableButton', title: 'Boost Timer devices', multiple: true, required: false, submitOnChange: true
         }
         section('OpenHASP plates') {
             paragraph 'Each plate has its own MQTT connector and mapping rows. The connector uses the shared broker settings above.'
@@ -70,6 +70,7 @@ def mainPage() {
                 input plateSetting(plateId, 'createVirtualControls'), 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true, width: 4
 
                 paragraph "Connector device: ${connectorDevice(plateId)?.displayName ?: 'created when saved'}"
+                paragraph "MQTT topic prefix: ${plateTopicPrefix(effectivePlateForDisplay(plate))}"
                 input refreshButtonName(plateId), 'button', title: 'Reconnect / refresh this plate'
                 input removePlateButtonName(plateId), 'button', title: 'Remove this plate'
 
@@ -99,14 +100,31 @@ void mappingInputs(String plateId, String rowId, int rowNumber) {
         required: true,
         submitOnChange: true,
         width: 1
-    input "${prefix}incoming", 'text', title: 'Incoming', defaultValue: row.incoming ?: '', required: false, width: 2
     String type = settingString("${prefix}type", row.type ?: 'switch')
-    if (type != 'timerButton') {
+    if (rowAcceptsInput(type)) {
+        input "${prefix}incoming", 'text', title: 'Incoming', defaultValue: row.incoming ?: '', required: false, width: 2
+    }
+    if (rowPublishesOutput(type)) {
         input "${prefix}outgoing", 'text', title: 'Outgoing', defaultValue: row.outgoing ?: '', required: false, width: 2
     }
     if (type == 'dimmer') {
         input "${prefix}targetDimmer", 'capability.switchLevel', title: 'Target', multiple: false, required: false, width: 2
         input "${prefix}labelTopic", 'text', title: 'Level label', defaultValue: row.labelTopic ?: '', required: false, width: 2
+    } else if (type == 'button') {
+        input "${prefix}targetButton", 'capability.pushableButton', title: 'Target', multiple: false, required: false, width: 2
+        input "${prefix}buttonNumber", 'number', title: 'Button #', defaultValue: row.buttonNumber ?: 1, required: true, width: 1
+    } else if (type == 'lock') {
+        input "${prefix}targetLock", 'capability.lock', title: 'Target', multiple: false, required: false, width: 2
+    } else if (type == 'temperatureDisplay') {
+        input "${prefix}targetTemperature", 'capability.temperatureMeasurement', title: 'Target', multiple: false, required: false, width: 2
+    } else if (type == 'humidityDisplay') {
+        input "${prefix}targetHumidity", 'capability.relativeHumidityMeasurement', title: 'Target', multiple: false, required: false, width: 2
+    } else if (type == 'illuminanceDisplay') {
+        input "${prefix}targetIlluminance", 'capability.illuminanceMeasurement', title: 'Target', multiple: false, required: false, width: 2
+    } else if (type == 'contactDisplay') {
+        input "${prefix}targetContact", 'capability.contactSensor', title: 'Target', multiple: false, required: false, width: 2
+    } else if (type == 'motionDisplay') {
+        input "${prefix}targetMotion", 'capability.motionSensor', title: 'Target', multiple: false, required: false, width: 2
     } else if (type == 'timerButton') {
         if (boostTimerAvailable()) {
             input "${prefix}targetBoostTimer", 'enum', title: 'Timer target', options: boostTimerDeviceOptions(), defaultValue: row.targetBoostTimer ?: '', required: false, width: 2
@@ -119,10 +137,14 @@ void mappingInputs(String plateId, String rowId, int rowNumber) {
         input "${prefix}labelTopic", 'text', title: 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
     }
     if (type == 'timerButton') {
-        input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
-        input "${prefix}timerMaxMinutes", 'number', title: 'Max min', defaultValue: row.timerMaxMinutes ?: 3, required: true, width: 2
+        boolean legacyFallback = !boostTimerAvailable()
+        if (legacyFallback) {
+            paragraph '<b>Legacy fallback timer</b>'
+            input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
+            input "${prefix}timerMaxMinutes", 'number', title: 'Max min', defaultValue: row.timerMaxMinutes ?: 3, required: true, width: 2
+            input "${prefix}createVirtualTimer", 'bool', title: 'Virtual if blank', defaultValue: true, required: true, width: 2
+        }
         input "${prefix}stateLabelTopic", 'text', title: 'State label', defaultValue: row.stateLabelTopic ?: 'command/p1b13.text', required: false, width: 3
-        input "${prefix}createVirtualTimer", 'bool', title: 'Virtual if blank', defaultValue: true, required: true, width: 2
     }
     input removeRowButtonName(plateId, rowId), 'button', title: "Remove row ${rowNumber}"
 }
@@ -154,9 +176,11 @@ void initialize() {
         plate.rows.findAll { it.enabled != false }.each { Map row ->
             def target = rowTarget(row)
             if (target) {
-                subscribe(target, 'switch', targetSwitchHandler)
+                if (row.type in ['switch', 'dimmer', 'timerButton']) subscribe(target, 'switch', targetSwitchHandler)
                 if (row.type == 'dimmer') subscribe(target, 'level', targetLevelHandler)
                 if (row.type == 'timerButton') subscribe(target, 'displayText', targetTimerDisplayHandler)
+                String attributeName = rowAttributeName(row)
+                if (attributeName) subscribe(target, attributeName, targetAttributeHandler)
             }
             def control = managedControl(plate, row)
             if (control) {
@@ -203,6 +227,10 @@ void connectorMessageHandler(evt) {
         handleSwitchMessage(plate, row, payload)
     } else if (row.type == 'dimmer') {
         handleDimmerMessage(plate, row, payload)
+    } else if (row.type == 'button') {
+        handleButtonMessage(plate, row, payload)
+    } else if (row.type == 'lock') {
+        handleLockMessage(plate, row, payload)
     } else if (row.type == 'timerButton') {
         handleTimerMessage(plate, row, payload)
     }
@@ -220,6 +248,8 @@ void targetSwitchHandler(evt) {
                     syncControl(plate, row, normalizeSwitchValue(evt.value), currentTargetLevel(row))
                 } else if (row.type == 'timerButton') {
                     publishTimerState(plate, row)
+                } else if (row.type == 'lock') {
+                    publishRowAttribute(plate, row, 'lock', evt.value)
                 }
             }
         }
@@ -242,6 +272,14 @@ void targetTimerDisplayHandler(evt) {
     activePlateConfigs().each { Map plate ->
         plate.rows.findAll { it.type == 'timerButton' && rowTarget(it)?.id?.toString() == evt.deviceId?.toString() }.each { Map row ->
             publishTimerState(plate, row)
+        }
+    }
+}
+
+void targetAttributeHandler(evt) {
+    activePlateConfigs().each { Map plate ->
+        plate.rows.findAll { rowAttributeName(it) == evt.name && rowTarget(it)?.id?.toString() == evt.deviceId?.toString() }.each { Map row ->
+            publishRowAttribute(plate, row, evt.name, evt.value)
         }
     }
 }
@@ -269,6 +307,20 @@ void handleDimmerMessage(Map plate, Map row, String payload) {
     if (!openHaspEventIsAction(payload)) return
     int level = Math.max(1, Math.min(100, normalizeLevelValue(payload, 100)))
     commandTargetFromRow(row, 'on', level, 'panel')
+}
+
+void handleButtonMessage(Map plate, Map row, String payload) {
+    if (!openHaspEventIsAction(payload)) return
+    def target = rowTarget(row)
+    if (!target) return
+    target.push(Math.max(1, safeInt(row.buttonNumber, 1)))
+}
+
+void handleLockMessage(Map plate, Map row, String payload) {
+    if (!openHaspEventIsAction(payload)) return
+    def target = rowTarget(row)
+    if (!target) return
+    normalizeLockValue(payload) == 'locked' ? target.lock() : target.unlock()
 }
 
 void handleTimerMessage(Map plate, Map row, String payload) {
@@ -346,6 +398,11 @@ void publishRowLevel(Map plate, Map row, int level) {
     if (row.labelTopic) publishPlateTopic(plate, row.labelTopic, "${Math.max(1, Math.min(100, level))}", false)
 }
 
+void publishRowAttribute(Map plate, Map row, String attributeName, Object value) {
+    if (!row.outgoing) return
+    publishPlateTopic(plate, row.outgoing, formatAttributeValue(row, attributeName, value), false)
+}
+
 void publishTimerState(Map plate, Map row) {
     def target = rowTarget(row)
     if (target && hasTimerDisplay(target)) {
@@ -370,6 +427,22 @@ void commandBoostTarget(target) {
         // Fall through to switch-style targets.
     }
     commandSwitch(target, 'on')
+}
+
+String formatAttributeValue(Map row, String attributeName, Object value) {
+    if (value == null) return ''
+    if (row.type == 'temperatureDisplay') return "${value}°"
+    if (row.type == 'humidityDisplay') return "${value}%"
+    if (row.type == 'illuminanceDisplay') return "${value} lx"
+    "${value}".toUpperCase()
+}
+
+String normalizeLockValue(Object value) {
+    Object normalized = openHaspPayloadValue(value)
+    if (normalized instanceof Number) return normalized != 0 ? 'locked' : 'unlocked'
+    if (normalized instanceof Boolean) return normalized ? 'locked' : 'unlocked'
+    String text = "${normalized ?: ''}".trim().toLowerCase()
+    text in ['1', 'true', 'on', 'locked', 'lock'] ? 'locked' : 'unlocked'
 }
 
 boolean hasTimerDisplay(target) {
@@ -400,6 +473,16 @@ String fullTopic(Map plate, String suffix) {
     clean.startsWith("${base}/${plateName}/") ? clean : "${base}/${plateName}/${clean}"
 }
 
+String plateTopicPrefix(Map plate) {
+    "${cleanTopic(plate.baseTopic ?: 'hasp')}/${cleanTopic(plate.plateName ?: 'panel')}"
+}
+
+Map effectivePlateForDisplay(Map plate) {
+    Map effective = new LinkedHashMap(plate)
+    effective.putAll(mqttState())
+    effective
+}
+
 void syncTargetsToPlate(Map plate) {
     plate.rows.each { Map row ->
         def target = rowTarget(row)
@@ -411,11 +494,21 @@ void syncTargetsToPlate(Map plate) {
             syncControl(plate, row, target.currentSwitch ?: 'on', currentTargetLevel(row))
         } else if (row.type == 'timerButton') {
             publishTimerState(plate, row)
+        } else if (rowPublishesOutput(row.type) && target) {
+            String attributeName = rowAttributeName(row)
+            if (attributeName) publishRowAttribute(plate, row, attributeName, target.currentValue(attributeName))
         }
     }
 }
 
 def rowTarget(Map row) {
+    if (row.type == 'button') return row.targetButton
+    if (row.type == 'lock') return row.targetLock
+    if (row.type == 'temperatureDisplay') return row.targetTemperature
+    if (row.type == 'humidityDisplay') return row.targetHumidity
+    if (row.type == 'illuminanceDisplay') return row.targetIlluminance
+    if (row.type == 'contactDisplay') return row.targetContact
+    if (row.type == 'motionDisplay') return row.targetMotion
     if (row.type == 'timerButton') {
         def boostTarget = boostTimerDeviceById(row.targetBoostTimer)
         if (boostTarget) return boostTarget
@@ -428,9 +521,38 @@ int currentTargetLevel(Map row) {
 }
 
 Map rowTypeOptions(String currentType = 'switch') {
-    Map options = [switch: 'Switch', dimmer: 'Dimmer']
+    Map options = [
+        switch: 'Switch',
+        dimmer: 'Dimmer',
+        button: 'Button',
+        lock: 'Lock',
+        temperatureDisplay: 'Temperature',
+        humidityDisplay: 'Humidity',
+        illuminanceDisplay: 'Illuminance',
+        contactDisplay: 'Contact',
+        motionDisplay: 'Motion'
+    ]
     if (boostTimerAvailable() || currentType == 'timerButton') options.timerButton = 'Boost timer'
     options
+}
+
+boolean rowAcceptsInput(String type) {
+    type in ['switch', 'dimmer', 'button', 'lock', 'timerButton']
+}
+
+boolean rowPublishesOutput(String type) {
+    type in ['switch', 'dimmer', 'lock', 'temperatureDisplay', 'humidityDisplay', 'illuminanceDisplay', 'contactDisplay', 'motionDisplay']
+}
+
+String rowAttributeName(Map row) {
+    [
+        lock: 'lock',
+        temperatureDisplay: 'temperature',
+        humidityDisplay: 'humidity',
+        illuminanceDisplay: 'illuminance',
+        contactDisplay: 'contact',
+        motionDisplay: 'motion'
+    ][row.type] as String
 }
 
 boolean boostTimerAvailable() {
@@ -451,7 +573,20 @@ def boostTimerDeviceById(Object id) {
 List selectedBoostTimerDevices() {
     def selected = settings.boostTimerDevices
     if (!selected) return []
-    selected instanceof Collection ? selected as List : [selected]
+    List devices = selected instanceof Collection ? selected as List : [selected]
+    devices.findAll { isBoostTimerDevice(it) }
+}
+
+boolean isBoostTimerDevice(device) {
+    if (!device) return false
+    if ("${device.currentValue('integrationType') ?: ''}" == 'boostTimer') return true
+    if ("${device.currentValue('openHaspRowType') ?: ''}" == 'timerButton') return true
+    try {
+        if (device.hasCommand('boost') && device.currentValue('displayText') != null) return true
+    } catch (ignored) {
+        // Some Hubitat test doubles/devices do not expose command metadata.
+    }
+    false
 }
 
 void commandSwitch(device, Object value) {
@@ -604,13 +739,20 @@ void syncStateFromSettings() {
             ['label', 'type', 'incoming', 'outgoing', 'labelTopic', 'stateLabelTopic'].each { String key ->
                 if (settings.containsKey("${prefix}${key}")) row[key] = settings["${prefix}${key}"]
             }
-            ['timerIncrementMinutes', 'timerMaxMinutes'].each { String key ->
+            ['timerIncrementMinutes', 'timerMaxMinutes', 'buttonNumber'].each { String key ->
                 if (settings.containsKey("${prefix}${key}")) row[key] = safeInt(settings["${prefix}${key}"], safeInt(row[key], 1))
             }
             row.createVirtualTimer = settingEnabled(settings["${prefix}createVirtualTimer"], settingEnabled(row.createVirtualTimer, true))
             row.targetSwitch = settings["${prefix}targetSwitch"]
             row.targetDimmer = settings["${prefix}targetDimmer"]
             row.targetBoostTimer = settings["${prefix}targetBoostTimer"]
+            row.targetButton = settings["${prefix}targetButton"]
+            row.targetLock = settings["${prefix}targetLock"]
+            row.targetTemperature = settings["${prefix}targetTemperature"]
+            row.targetHumidity = settings["${prefix}targetHumidity"]
+            row.targetIlluminance = settings["${prefix}targetIlluminance"]
+            row.targetContact = settings["${prefix}targetContact"]
+            row.targetMotion = settings["${prefix}targetMotion"]
             row.key = "${plateId}:${rowId}"
             row
         }
@@ -759,6 +901,7 @@ Map defaultRow(String id, String label, String type, String incoming, String out
         incoming: incoming,
         outgoing: outgoing,
         labelTopic: labelTopic,
+        buttonNumber: 1,
         timerIncrementMinutes: 1,
         timerMaxMinutes: 3
     ]
