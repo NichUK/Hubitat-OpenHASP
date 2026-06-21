@@ -130,8 +130,7 @@ void initialize() {
             }
             def control = managedControl(plate, row)
             if (control) {
-                subscribe(control, 'switch', controlSwitchHandler)
-                if (row.type == 'dimmer') subscribe(control, 'level', controlLevelHandler)
+                syncControl(plate, row, rowTarget(row)?.currentSwitch ?: 'off', currentTargetLevel(row))
             }
             if (row.type == 'timerButton' && remainingTimerSeconds(row) > 0) {
                 runIn(1, 'timerTick')
