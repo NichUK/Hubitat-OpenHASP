@@ -1,5 +1,6 @@
 package uk.co.nichuk.hubitat.openhasp
 
+import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
 
 class OpenHaspSupport {
@@ -138,6 +139,44 @@ class OpenHaspSupport {
             return value
         }
         !("${value}".trim().toLowerCase() in ['false', '0', 'no', 'off'])
+    }
+
+    static String cleanTopic(Object value) {
+        "${value ?: ''}".trim().replaceAll(/^\/+|\/+$/, '')
+    }
+
+    static String fullTopic(Map plate, String suffix) {
+        String clean = cleanTopic(suffix)
+        String base = cleanTopic(plate.baseTopic ?: 'hasp')
+        String plateName = cleanTopic(plate.plateName ?: 'panel')
+        clean.startsWith("${base}/${plateName}/") ? clean : "${base}/${plateName}/${clean}"
+    }
+
+    static boolean topicMatchesPlate(Map plate, String topic) {
+        "${topic ?: ''}".startsWith("${cleanTopic(plate.baseTopic ?: 'hasp')}/${cleanTopic(plate.plateName)}/")
+    }
+
+    static String topicSuffixForPlate(Map plate, String topic) {
+        "${topic ?: ''}" - "${cleanTopic(plate.baseTopic ?: 'hasp')}/${cleanTopic(plate.plateName)}/"
+    }
+
+    static Map routeTopic(Collection<Map> plates, String topic) {
+        Map plate = plates.find { topicMatchesPlate(it, topic) }
+        plate ? [plate: plate, suffix: topicSuffixForPlate(plate, topic)] : [:]
+    }
+
+    static Map matchingRow(Map plate, String topic) {
+        String suffix = topicSuffixForPlate(plate, topic)
+        ((plate.rows ?: []) as List<Map>).find { it.enabled != false && it.incoming == suffix } ?: [:]
+    }
+
+    static String guiConfigJson(Object idleSeconds, Object brightness) {
+        JsonOutput.toJson([
+            idle1: 0,
+            idle2: Math.max(0, safeInt(idleSeconds, 60)),
+            bckl: clamp(safeInt(brightness, 42), 1, 255),
+            bcklinv: 0
+        ])
     }
 
     static Map defaultBathroomControls() {

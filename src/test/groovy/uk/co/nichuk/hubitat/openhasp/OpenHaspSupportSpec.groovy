@@ -14,7 +14,7 @@ class OpenHaspSupportSpec extends Specification {
     }
 
     @Unroll
-    def 'normalizes MQTT Import switch payload #payload to #switchValue'() {
+    def 'normalizes OpenHASP switch payload #payload to #switchValue'() {
         expect:
         OpenHaspSupport.normalizeSwitchValue(payload) == switchValue
 
@@ -30,7 +30,7 @@ class OpenHaspSupportSpec extends Specification {
     }
 
     @Unroll
-    def 'normalizes MQTT Import level payload #payload to #level'() {
+    def 'normalizes OpenHASP level payload #payload to #level'() {
         expect:
         OpenHaspSupport.normalizeLevelValue(payload, 100) == level
 
@@ -136,5 +136,65 @@ class OpenHaspSupportSpec extends Specification {
         controls.p1b43.kind == 'dimmer'
         controls.p1b52.kind == 'switch'
         controls.p1b53.kind == 'dimmer'
+    }
+
+    def 'constructs OpenHASP topics for a plate'() {
+        given:
+        def plate = [baseTopic: 'hasp', plateName: 'bathroom_panel']
+
+        expect:
+        OpenHaspSupport.fullTopic(plate, 'command/p1b42.val') == 'hasp/bathroom_panel/command/p1b42.val'
+        OpenHaspSupport.fullTopic(plate, '/command/backlight/') == 'hasp/bathroom_panel/command/backlight'
+        OpenHaspSupport.fullTopic(plate, 'hasp/bathroom_panel/config/gui') == 'hasp/bathroom_panel/config/gui'
+    }
+
+    def 'routes MQTT messages by plate prefix'() {
+        given:
+        def bathroom = [id: 'bathroom', baseTopic: 'hasp', plateName: 'bathroom_panel']
+        def kitchen = [id: 'kitchen', baseTopic: 'hasp', plateName: 'kitchen_panel']
+
+        when:
+        def routed = OpenHaspSupport.routeTopic([bathroom, kitchen], 'hasp/kitchen_panel/state/p1b42')
+
+        then:
+        routed.plate.id == 'kitchen'
+        routed.suffix == 'state/p1b42'
+        OpenHaspSupport.routeTopic([bathroom, kitchen], 'hasp/other_panel/state/p1b42') == [:]
+    }
+
+    def 'matches enabled mapping rows by incoming suffix'() {
+        given:
+        def plate = [
+            baseTopic: 'hasp',
+            plateName: 'bathroom_panel',
+            rows: [
+                [id: 'office', enabled: true, incoming: 'state/p1b42'],
+                [id: 'disabled', enabled: false, incoming: 'state/p1b43']
+            ]
+        ]
+
+        expect:
+        OpenHaspSupport.matchingRow(plate, 'hasp/bathroom_panel/state/p1b42').id == 'office'
+        OpenHaspSupport.matchingRow(plate, 'hasp/bathroom_panel/state/p1b43') == [:]
+    }
+
+    def 'generates retained GUI config JSON'() {
+        expect:
+        OpenHaspSupport.guiConfigJson(60, 42) == '{"idle1":0,"idle2":60,"bckl":42,"bcklinv":0}'
+        OpenHaspSupport.guiConfigJson(-1, 999) == '{"idle1":0,"idle2":0,"bckl":255,"bcklinv":0}'
+    }
+
+    def 'keeps identical object ids isolated per plate'() {
+        given:
+        def bathroom = [id: 'bathroom', baseTopic: 'hasp', plateName: 'bathroom_panel', rows: [[id: 'office', enabled: true, incoming: 'state/p1b42']]]
+        def kitchen = [id: 'kitchen', baseTopic: 'hasp', plateName: 'kitchen_panel', rows: [[id: 'other', enabled: true, incoming: 'state/p1b42']]]
+
+        when:
+        def routed = OpenHaspSupport.routeTopic([bathroom, kitchen], 'hasp/bathroom_panel/state/p1b42')
+        def row = OpenHaspSupport.matchingRow(routed.plate, 'hasp/bathroom_panel/state/p1b42')
+
+        then:
+        routed.plate.id == 'bathroom'
+        row.id == 'office'
     }
 }

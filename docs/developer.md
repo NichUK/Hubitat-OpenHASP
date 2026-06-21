@@ -2,42 +2,50 @@
 
 ## Runtime Architecture
 
-Hubitat's MQTT client interface is available to drivers, not apps. For normal operation this package uses Hubitat's built-in MQTT Import Integration as that MQTT driver layer, then keeps cross-device binding in `OpenHASP Panel` child apps.
-
-OpenHASP publishes object events as JSON payloads. MQTT Import's manual mapper maps whole payloads to attributes and supports enum value mappings, but it does not currently provide JSON-path extraction or arbitrary string command capabilities. For slider controls, use a raw Switch event device for the OpenHASP JSON state topic and a separate SwitchLevel command device for the OpenHASP `.val` command topic.
-
-Dimmer updates have three possible sources: the OpenHASP raw event device, the app-created Hubitat control, and the real target device. When a user requests a new level from the panel or app-created control, `OpenHASP Panel` records that level briefly and mirrors it immediately to the panel command device and virtual control. During that short pending window, older target level reports are ignored so the panel slider cannot bounce back to the previous level before the real device finishes reporting the new one.
-
-Switch updates use the same pending-target model. Because a single MQTT Import switch can be both the OpenHASP state event device and the command endpoint, mirrored commands to the panel switch are marked as expected echoes and ignored if they return through the subscription path.
-
-Panel-originated switch and slider events are not immediately mirrored back to the same OpenHASP object; the panel has already changed its own UI. Hubitat-originated changes and target-device reports are still mirrored back to OpenHASP. Text label updates use the optional `OpenHASP Text Label` driver because MQTT Import does not currently publish arbitrary string command payloads.
+Version 0.4.0 uses a direct MQTT connector per OpenHASP plate.
 
 ```mermaid
 flowchart LR
-    OpenHASP["OpenHASP plate"] -->|"MQTT state events"| Broker["MQTT broker"]
-    Broker -->|"hasp/{plate}/state/#"| Import["Hubitat MQTT Import Integration"]
-    Import --> PanelDevices["MQTT Import panel devices"]
-    Manager["OpenHASP Manager parent"] --> Panel["OpenHASP Panel child app"]
-    PanelDevices --> Panel
-    Panel --> Controls["Virtual bound controls"]
-    Controls --> Panel
-    Panel --> Targets["Hubitat target devices"]
-    Targets --> Panel
-    Panel --> PanelDevices
-    PanelDevices -->|"MQTT commands"| Broker
+    OpenHASP["OpenHASP plate"] -->|"hasp/{plate}/state/#"| Broker["MQTT broker"]
+    Broker --> Connector["OpenHASP Connector child driver"]
+    Connector -->|"message attribute JSON"| Manager["OpenHASP Manager"]
+    Manager --> Targets["Hubitat target devices"]
+    Targets --> Manager
+    Manager -->|"hasp/{plate}/command/# and config/#"| Connector
+    Connector --> Broker
     Broker --> OpenHASP
 ```
 
+`OpenHASP Connector` uses Hubitat `interfaces.mqtt`. It connects to the configured broker, subscribes to `hasp/<plate>/state/#` and `hasp/<plate>/LWT`, and emits every incoming MQTT event as a JSON `message` attribute:
+
+```json
+{"sequence":1,"topic":"hasp/bathroom_panel/state/p1b42","payload":"{\"event\":\"up\",\"val\":1}","at":1782042000000}
+```
+
+`OpenHASP Manager` subscribes to those child-device `message` events, routes by plate prefix, matches a mapping row, and commands Hubitat targets.
+
+## Feedback Rules
+
+Panel-originated commands go to Hubitat target devices. They are not immediately mirrored back to the same OpenHASP widget.
+
+Hubitat-originated state changes are mirrored back to OpenHASP command topics.
+
+Dimmer rows publish slider level and label text from Hubitat level state. Switch rows publish `1` or `0`. This separation prevents a switch state event from overwriting a slider level.
+
+Timer rows keep their switch on while a countdown is active and publish button/state labels on every tick.
+
 ## Tests
 
-The local Gradle tests cover the pure logic that must remain stable across Hubitat releases:
+The Gradle tests cover:
 
-- OpenHASP JSON event parsing and actionable event filtering
-- level/brightness conversion
-- timer increment and maximum behavior
-- Hubitat app setting normalization
-- bathroom default control map
-- MQTT Import raw OpenHASP value normalization
+- OpenHASP payload parsing
+- switch, dimmer, timer, and idle normalization
+- topic construction per plate
+- plate routing by MQTT topic prefix
+- mapping-row matching
+- GUI config JSON generation
+- multi-plate isolation
+- Hubitat Groovy syntax parsing for app and driver files
 
 Run:
 
@@ -50,5 +58,5 @@ Run:
 1. Run `./gradlew test`.
 2. Update `packageManifest.json` version, date, and release notes.
 3. Commit and push to `main`.
-4. Install/update through HPM on a Hubitat hub.
+4. Install/update through HPM or manually on a Hubitat hub.
 5. Capture screenshots for `docs/images/` when the Hubitat UI changes.

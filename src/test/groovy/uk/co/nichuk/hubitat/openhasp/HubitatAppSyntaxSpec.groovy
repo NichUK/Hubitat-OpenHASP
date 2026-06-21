@@ -11,6 +11,7 @@ class HubitatAppSyntaxSpec extends Specification {
         [
             'apps/openhasp-manager.groovy',
             'apps/openhasp-panel.groovy',
+            'drivers/openhasp-connector.groovy',
             'drivers/openhasp-text-label.groovy'
         ].each { String fileName ->
             shell.parse(new File(fileName))

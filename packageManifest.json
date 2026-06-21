@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Adds configurable OpenHASP screen idle/backlight handling, including idle-state mapping, wake brightness, optional HTTP idle-time configuration, and managed backlight command output.",
+  "releaseNotes": "Replaces MQTT Import/Export runtime mapping with a multi-plate OpenHASP Manager and one MQTT connector child driver per plate.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",
@@ -17,23 +17,14 @@
       "required": true,
       "oauth": false,
       "primary": true
-    },
-    {
-      "id": "2f5586b9-b2aa-4d16-9ff5-c47cfdf6aee9",
-      "name": "OpenHASP Panel",
-      "namespace": "nichuk",
-      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-panel.groovy",
-      "required": true,
-      "oauth": false,
-      "primary": false
     }
   ],
   "drivers": [
     {
-      "id": "f8aa89cd-c1cf-4974-adf6-7e6fce44d7e4",
-      "name": "OpenHASP Text Label",
+      "id": "5983926f-dcad-4f2b-a3da-b2933e19f06b",
+      "name": "OpenHASP Connector",
       "namespace": "nichuk",
-      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-text-label.groovy",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-connector.groovy",
       "required": true
     }
   ]

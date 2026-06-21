@@ -4,7 +4,7 @@
       "name": "Hubitat OpenHASP",
       "category": "Control",
       "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.json",
-      "description": "Reusable OpenHASP binding app for Hubitat MQTT Import devices."
+      "description": "Reusable direct MQTT connector for OpenHASP panels on Hubitat."
     }
   ]
 }
