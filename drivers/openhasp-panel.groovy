@@ -21,6 +21,26 @@ metadata {
         command 'publishCommand', [[name: 'command*', type: 'STRING'], [name: 'payload*', type: 'STRING']]
         command 'publishObjectValue', [[name: 'objectId*', type: 'STRING'], [name: 'value*', type: 'STRING']]
         command 'publishObjectText', [[name: 'objectId*', type: 'STRING'], [name: 'text*', type: 'STRING']]
+        command 'configureFromManager', [
+            [name: 'mqttHost*', type: 'STRING'],
+            [name: 'mqttPort*', type: 'NUMBER'],
+            [name: 'mqttUsername', type: 'STRING'],
+            [name: 'mqttPassword', type: 'STRING'],
+            [name: 'plateName*', type: 'STRING'],
+            [name: 'idleSeconds*', type: 'NUMBER'],
+            [name: 'timerIncrementMinutes*', type: 'NUMBER'],
+            [name: 'timerMaxMinutes*', type: 'NUMBER'],
+            [name: 'debugLogging', type: 'STRING']
+        ]
+        command 'clearManagedControls'
+        command 'configureManagedControl', [
+            [name: 'controlId*', type: 'STRING'],
+            [name: 'kind*', type: 'STRING'],
+            [name: 'displayName*', type: 'STRING'],
+            [name: 'role', type: 'STRING'],
+            [name: 'labelObject', type: 'STRING']
+        ]
+        command 'applyManagedConfiguration'
         command 'loadDefaultBathroomControls'
         command 'rebuildChildDevices'
     }
@@ -59,12 +79,49 @@ void initialize() {
     refresh()
 }
 
+void configureFromManager(String host, Object port, String username, String password, String plate, Object idle, Object increment, Object max, Object debug) {
+    try {
+        state.remove('managerConfig')
+    } catch (ignored) {
+        state.managerConfig = null
+    }
+    device.updateSetting('mqttHost', [value: host ?: '', type: 'text'])
+    device.updateSetting('mqttPort', [value: safeInt(port, 1883), type: 'number'])
+    device.updateSetting('mqttUsername', [value: username ?: '', type: 'text'])
+    device.updateSetting('mqttPassword', [value: password ?: '', type: 'password'])
+    device.updateSetting('plateName', [value: plate ?: 'bathroom_panel', type: 'text'])
+    device.updateSetting('idleSeconds', [value: safeInt(idle, 60), type: 'number'])
+    device.updateSetting('timerIncrementMinutes', [value: safeInt(increment, 1), type: 'number'])
+    device.updateSetting('timerMaxMinutes', [value: safeInt(max, 3), type: 'number'])
+    device.updateSetting('debugLogging', [value: truthy(debug), type: 'bool'])
+}
+
+void clearManagedControls() {
+    state.managerControls = [:]
+}
+
+void configureManagedControl(String controlId, String kind, String displayName, String role = '', String labelObject = '') {
+    Map controls = state.managerControls instanceof Map ? state.managerControls as Map : [:]
+    controls[controlId] = [
+        kind       : kind ?: 'switch',
+        name       : displayName ?: controlId,
+        role       : role ?: '',
+        labelObject: labelObject ?: ''
+    ]
+    state.managerControls = controls
+}
+
+void applyManagedConfiguration() {
+    initialize()
+}
+
 void refresh() {
     updateTimerDisplay()
 }
 
 void connectMqtt() {
-    if (!settings.mqttHost) {
+    String host = configuredValue('mqttHost', '') as String
+    if (!host) {
         log.warn 'MQTT broker host is not configured'
         return
     }
@@ -73,19 +130,33 @@ void connectMqtt() {
     } catch (ignored) {
     }
     String clientId = "hubitat-openhasp-${device.id ?: device.deviceNetworkId}".replaceAll('[^A-Za-z0-9_-]', '_')
-    String uri = "tcp://${settings.mqttHost}:${settings.mqttPort ?: 1883}"
+    String uri = "tcp://${host}:${configuredValue('mqttPort', 1883)}"
     try {
-        if (settings.mqttUsername) {
-            interfaces.mqtt.connect(uri, clientId, settings.mqttUsername as String, settings.mqttPassword ?: '')
+        if (configuredValue('mqttUsername', '')) {
+            interfaces.mqtt.connect(uri, clientId, configuredValue('mqttUsername', '') as String, configuredValue('mqttPassword', '') as String)
         } else {
             interfaces.mqtt.connect(uri, clientId)
         }
-        interfaces.mqtt.subscribe("hasp/${resolvedPlateName()}/state/#")
-        interfaces.mqtt.subscribe("home/openhasp/${resolvedPlateName()}/ufh/#")
-        log.info "Connected to MQTT for OpenHASP plate ${resolvedPlateName()}"
+        runIn(2, 'subscribeMqttTopics')
+        log.info "Connecting to MQTT for OpenHASP plate ${resolvedPlateName()}"
     } catch (Exception e) {
         log.error "MQTT connect failed: ${e.message}"
         runIn(30, 'initialize')
+    }
+}
+
+void subscribeMqttTopics() {
+    try {
+        interfaces.mqtt.subscribe("hasp/${resolvedPlateName()}/state/#")
+        interfaces.mqtt.subscribe("hasp/${resolvedPlateName()}/state/idle")
+        controlConfig().keySet().each { controlId ->
+            interfaces.mqtt.subscribe("hasp/${resolvedPlateName()}/state/${controlId}")
+        }
+        interfaces.mqtt.subscribe("home/openhasp/${resolvedPlateName()}/ufh/#")
+        log.info "Subscribed to MQTT topics for OpenHASP plate ${resolvedPlateName()}"
+    } catch (Exception e) {
+        log.warn "MQTT subscribe failed: ${e.message}"
+        runIn(10, 'subscribeMqttTopics')
     }
 }
 
@@ -93,7 +164,10 @@ void mqttClientStatus(String status) {
     if (status?.toLowerCase()?.contains('error')) {
         log.warn "MQTT status: ${status}"
         runIn(30, 'initialize')
-    } else if (settings.debugLogging) {
+    } else if (status?.toLowerCase()?.contains('succeed') || status?.toLowerCase()?.contains('connect')) {
+        log.info "MQTT status: ${status}"
+        subscribeMqttTopics()
+    } else if (debugLoggingEnabled()) {
         log.debug "MQTT status: ${status}"
     }
 }
@@ -110,7 +184,7 @@ void parse(String message) {
 }
 
 void handleMqtt(String topic, String payload) {
-    if (settings.debugLogging) {
+    if (debugLoggingEnabled()) {
         log.debug "MQTT ${topic}: ${payload}"
     }
     String statePrefix = "hasp/${resolvedPlateName()}/state/"
@@ -142,17 +216,22 @@ void handleMqtt(String topic, String payload) {
         if (kind == 'dimmer') {
             child.sendEvent(name: 'switch', value: 'on', isStateChange: true)
             publishObjectText(control.labelObject as String, "${level}")
+            parent?.handleOpenHaspControlEvent(device, controlId, kind, level)
         } else {
             publishObjectText(control.labelObject as String, "${level} C")
+            parent?.handleOpenHaspControlEvent(device, controlId, kind, level)
         }
     } else if (kind == 'button') {
         child.sendEvent(name: 'pushed', value: 1, isStateChange: true)
         if ("${control.role ?: ''}" == 'timerButton') {
             addTimerSeconds()
+        } else {
+            parent?.handleOpenHaspControlEvent(device, controlId, kind, 'pushed')
         }
     } else {
         String value = truthy(event.val) ? 'on' : 'off'
         child.sendEvent(name: 'switch', value: value, isStateChange: true)
+        parent?.handleOpenHaspControlEvent(device, controlId, kind, value)
     }
 }
 
@@ -161,20 +240,20 @@ void handleIdle(String payload) {
     if (state == 'long') {
         publishCommand('backlight', 'off')
     } else if (state == 'off') {
-        publishCommand('backlight', JsonOutput.toJson([state: 'on', brightness: clamp(safeInt(settings.backlightBrightness, 255), 1, 255)]))
+        publishCommand('backlight', JsonOutput.toJson([state: 'on', brightness: clamp(safeInt(configuredValue('backlightBrightness', 255), 255), 1, 255)]))
     }
 }
 
 void applyIdleConfig() {
     publishCommand('idle', 'off')
-    publishCommand('config/gui', JsonOutput.toJson([idle1: 0, idle2: safeInt(settings.idleSeconds, 60)]))
+    publishCommand('config/gui', JsonOutput.toJson([idle1: 0, idle2: safeInt(configuredValue('idleSeconds', 60), 60)]))
 }
 
 void addTimerSeconds() {
     long now = nowSeconds()
-    long remaining = Math.max(0L, (state.timerDeadlineEpochSeconds ?: 0L) as long - now)
-    long increment = safeInt(settings.timerIncrementMinutes, 1) * 60L
-    long maxSeconds = safeInt(settings.timerMaxMinutes, 3) * 60L
+    long remaining = Math.max(0L, ((state.timerDeadlineEpochSeconds ?: 0L) as long) - now)
+    long increment = safeInt(configuredValue('timerIncrementMinutes', 1), 1) * 60L
+    long maxSeconds = safeInt(configuredValue('timerMaxMinutes', 3), 3) * 60L
     state.timerDeadlineEpochSeconds = now + Math.min(maxSeconds, remaining + increment)
     setTimerChild('on')
     updateTimerDisplay()
@@ -217,6 +296,7 @@ void setTimerChild(String switchValue) {
     }
     def child = childFor(entry.key as String, entry.value as Map)
     child?.sendEvent(name: 'switch', value: switchValue, isStateChange: true)
+    parent?.handleOpenHaspControlEvent(device, entry.key as String, 'timer', switchValue)
 }
 
 void publishCommand(String command, String payload) {
@@ -241,7 +321,7 @@ void publishObjectText(String objectId, String text) {
 void publishMqtt(String topic, String payload) {
     try {
         interfaces.mqtt.publish(topic, payload ?: '')
-        if (settings.debugLogging) {
+        if (debugLoggingEnabled()) {
             log.debug "Published ${topic}: ${payload}"
         }
     } catch (Exception e) {
@@ -307,8 +387,11 @@ void loadDefaultBathroomControls() {
 }
 
 Map controlConfig() {
+    if (state.managerControls instanceof Map && state.managerControls) {
+        return state.managerControls as Map
+    }
     try {
-        def parsed = new JsonSlurper().parseText(settings.controlConfigJson ?: defaultControlConfigJson())
+        def parsed = new JsonSlurper().parseText(configuredValue('controlConfigJson', defaultControlConfigJson()) as String)
         return parsed instanceof Map ? parsed as Map : [:]
     } catch (Exception e) {
         log.warn "Control configuration JSON is invalid: ${e.message}"
@@ -347,12 +430,28 @@ int clamp(int value, int min, int max) {
     Math.max(min, Math.min(max, value))
 }
 
+Object configuredValue(String name, Object fallback = null) {
+    Map managerConfig = state.managerConfig instanceof Map ? state.managerConfig as Map : [:]
+    if (managerConfig.containsKey(name) && managerConfig[name] != null && "${managerConfig[name]}" != '') {
+        return managerConfig[name]
+    }
+    def settingValue = settings[name]
+    if (settingValue != null && "${settingValue}" != '') {
+        return settingValue
+    }
+    fallback
+}
+
+boolean debugLoggingEnabled() {
+    truthy(configuredValue('debugLogging', false))
+}
+
 long nowSeconds() {
     Math.floor(now() / 1000D) as long
 }
 
 String timerButtonText(long remainingSeconds) {
-    int increment = safeInt(settings.timerIncrementMinutes, 1)
+    int increment = safeInt(configuredValue('timerIncrementMinutes', 1), 1)
     if (remainingSeconds <= 0) {
         return "Start ${increment}m"
     }
@@ -366,7 +465,7 @@ String controlIdFromDni(String dni) {
 }
 
 String resolvedPlateName() {
-    settings.plateName ?: 'bathroom_panel'
+    configuredValue('plateName', 'bathroom_panel') as String
 }
 
 String defaultControlConfigJson() {

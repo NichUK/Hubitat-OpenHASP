@@ -49,14 +49,17 @@ Install the app and drivers from the raw GitHub URLs listed in `packageManifest.
 
 ## Quick Start
 
-1. Create a Hubitat virtual switch for safe underfloor-heating testing.
-2. Create a virtual device using the `OpenHASP Panel` driver.
-3. Configure MQTT broker host, port, username, password, and `plateName`.
-4. Keep the default control JSON for the bathroom example, or edit it for another plate.
-5. Save preferences, then run `Initialize`.
-6. Open Apps, add `OpenHASP Manager`, select the panel device, panel child devices, Office Main, Bedroom Main, and the UFH virtual switch.
+1. Open Apps, add `OpenHASP Manager`.
+2. Enter the MQTT broker host, port, username, password, and `plateName`.
+3. Select Office Main and Bedroom Main as the two lighting targets.
+4. Leave `Create and use a safe virtual UFH switch` enabled until the real heating actuator is identified.
+5. Save the app.
+
+The app creates an `OpenHASP Panel` child device, configures it, and creates a safe UFH virtual switch. The panel driver then creates child devices for the configured OpenHASP controls so the MQTT controls are visible in Hubitat.
 
 See [Configuration](docs/configuration.md) for the full walkthrough.
+
+![OpenHASP Manager configuration](docs/images/openhasp-manager-config.png)
 
 ## OpenHASP MQTT Requirements
 

@@ -36,11 +36,10 @@ https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.j
 
 Or paste the app and driver code manually from the files listed in the package manifest.
 
-## 3. Create the Panel Device
+## 3. Create the Manager App
 
-Create a new virtual device:
+Open Apps, add `OpenHASP Manager`, and configure:
 
-- Type: `OpenHASP Panel`
 - MQTT host: your broker host
 - MQTT port: usually `1883`
 - MQTT username/password: your broker credentials
@@ -48,12 +47,15 @@ Create a new virtual device:
 - Screen-off idle seconds: `60`
 - Timer increment minutes: `1` for testing, `60` for production
 - Timer maximum minutes: `3` for testing, `180` for production
+- Office target: `Office Main`
+- Bedroom target: `Bedroom Main`
+- Create and use a safe virtual UFH switch: enabled for testing
 
-Save the device and run `Initialize`.
+Save the app. It creates and configures the `OpenHASP Panel` child device automatically.
 
 ## 4. Check Child Devices
 
-The panel driver creates child devices for the configured OpenHASP controls. For the bathroom example, expect:
+The panel driver creates child devices for the configured OpenHASP controls. The manager app also creates `Bathroom UFH Virtual Switch` when the safe testing switch is enabled. For the bathroom example, expect:
 
 - Bathroom UFH Timer
 - Bathroom UFH Setpoint
@@ -62,19 +64,9 @@ The panel driver creates child devices for the configured OpenHASP controls. For
 - Bathroom Bedroom Main Switch
 - Bathroom Bedroom Main Dimmer
 
-## 5. Bind Hubitat Devices
+## 5. Binding Model
 
-Install `OpenHASP Manager` from Apps and select:
-
-- OpenHASP Panel device: the parent panel device
-- Office panel switch/dimmer children
-- Office target: `Office Main`
-- Bedroom panel switch/dimmer children
-- Bedroom target: `Bedroom Main`
-- UFH panel timer child
-- UFH target: a safe virtual switch for testing
-
-The default object IDs are already set for the bathroom panel page.
+The app binds by OpenHASP object ID, so you do not have to select generated child devices by hand. The default object IDs are already set for the bathroom panel page.
 
 ## 6. Acceptance Checks
 
