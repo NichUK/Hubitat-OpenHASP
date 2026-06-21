@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Adds UFH timer input filtering so OpenHASP button down/up or duplicate switch events only add one timer increment per physical tap.",
+  "releaseNotes": "Reduces UFH timer input debounce to 500 ms so deliberate repeated taps can add timer increments more quickly while duplicate button chatter is still ignored.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

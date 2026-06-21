@@ -284,7 +284,7 @@ boolean timerSwitchEventIsAction(Object value) {
 
 boolean suppressTimerInputBounce(evt) {
     long nowMs = now()
-    long debounceMs = 1000L
+    long debounceMs = 500L
     long lastAt = safeLong(state.lastTimerInputAtMs, 0L)
     if (lastAt && nowMs - lastAt < debounceMs) {
         return true
