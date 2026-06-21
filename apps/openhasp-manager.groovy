@@ -9,6 +9,9 @@ import groovy.json.JsonSlurper
 import groovy.transform.Field
 
 @Field static final String PASSWORD_MASK = '*********'
+@Field static final String TYPE_REGISTRY_EVENT = 'openhasp:typeRegistry'
+@Field static final String TYPE_REGISTRY_REQUEST_EVENT = 'openhasp:typeRegistryRequest'
+@Field static final String TYPE_REGISTRY_PROTOCOL = 'openhasp.typeRegistry.v1'
 
 definition(
     name: 'OpenHASP Manager',
@@ -79,6 +82,8 @@ def mainPage() {
             }
         }
         section('Options') {
+            paragraph "Optional row types discovered: ${registeredExternalTypeOptions().values().join(', ') ?: 'none'}"
+            input 'refreshTypeRegistry', 'button', title: 'Refresh optional row types'
             input 'debugLogging', 'bool', title: 'Enable debug logging', defaultValue: false, required: false
         }
     }
@@ -161,6 +166,8 @@ void initialize() {
     syncStateFromSettings()
     unsubscribe()
     unschedule()
+    subscribe(location, TYPE_REGISTRY_EVENT, typeRegistryEventHandler)
+    sendTypeRegistryDiscoveryRequest()
     activePlateConfigs().each { Map plate ->
         def connector = ensureConnector(plate)
         if (connector) {
@@ -201,6 +208,54 @@ void appButtonHandler(String buttonName) {
         if (parts.size() == 2) removeRow(parts[0], parts[1])
     } else if (buttonName.startsWith('refreshPlate__')) {
         updated()
+    } else if (buttonName == 'refreshTypeRegistry') {
+        sendTypeRegistryDiscoveryRequest()
+    }
+}
+
+void typeRegistryEventHandler(evt) {
+    Map event = parseJsonMap(evt?.value)
+    if (event.protocol != TYPE_REGISTRY_PROTOCOL) return
+    String provider = "${event.provider ?: ''}".trim()
+    if (!provider) return
+    Map registry = (state.typeRegistry ?: [types: [:], providers: [:]]) as Map
+    Map types = (registry.types ?: [:]) as Map
+    Map providers = (registry.providers ?: [:]) as Map
+    if (event.action == 'unregister') {
+        providers.remove(provider)
+        types.each { String key, Map definition ->
+            Map typeProviders = (definition.providers ?: [:]) as Map
+            typeProviders.remove(provider)
+            definition.providers = typeProviders
+        }
+        types = types.findAll { String key, Map definition -> ((definition.providers ?: [:]) as Map) }
+    } else if (event.action == 'register') {
+        providers[provider] = [label: event.providerLabel ?: provider, updatedAt: now()]
+        Map incomingTypes = (event.types ?: [:]) as Map
+        incomingTypes.each { String key, Map definition ->
+            Map current = (types[key] ?: [:]) as Map
+            Map merged = current + definition + [key: key]
+            Map typeProviders = (merged.providers ?: [:]) as Map
+            typeProviders[provider] = [label: event.providerLabel ?: provider, updatedAt: now()]
+            merged.providers = typeProviders
+            types[key] = merged
+        }
+    }
+    registry.types = types
+    registry.providers = providers
+    registry.updatedAt = now()
+    state.typeRegistry = registry
+}
+
+void sendTypeRegistryDiscoveryRequest() {
+    try {
+        sendLocationEvent(
+            name: TYPE_REGISTRY_REQUEST_EVENT,
+            value: JsonOutput.toJson([protocol: TYPE_REGISTRY_PROTOCOL, action: 'discover', requester: registryProviderKey(), at: now()]),
+            isStateChange: true
+        )
+    } catch (Exception e) {
+        log.warn "Could not send OpenHASP type discovery request: ${e.class.simpleName}: ${e.message}"
     }
 }
 
@@ -514,19 +569,105 @@ int currentTargetLevel(Map row) {
 }
 
 Map rowTypeOptions(String currentType = 'switch') {
-    Map options = [
-        switch: 'Switch',
-        dimmer: 'Dimmer',
-        button: 'Button',
-        lock: 'Lock',
-        temperatureDisplay: 'Temperature',
-        humidityDisplay: 'Humidity',
-        illuminanceDisplay: 'Illuminance',
-        contactDisplay: 'Contact',
-        motionDisplay: 'Motion'
-    ]
-    options.timerButton = 'Boost timer'
+    Map options = standardTypeOptions()
+    options.putAll(registeredExternalTypeOptions())
+    if (currentType && !(options.containsKey(currentType))) {
+        options[currentType] = "${currentType} (legacy)"
+    }
     options
+}
+
+Map standardTypeOptions() {
+    standardTypeDefinitions().collectEntries { String key, Map definition ->
+        [(key): definition.label]
+    }
+}
+
+Map standardTypeDefinitions() {
+    [
+        switch: [
+            label: 'Switch',
+            source: 'OpenHASP Manager',
+            capability: 'capability.switch',
+            direction: 'both',
+            handler: 'switch'
+        ],
+        dimmer: [
+            label: 'Dimmer',
+            source: 'OpenHASP Manager',
+            capability: 'capability.switchLevel',
+            direction: 'both',
+            handler: 'dimmer'
+        ],
+        button: [
+            label: 'Button',
+            source: 'OpenHASP Manager',
+            capability: 'capability.pushableButton',
+            direction: 'toHubitat',
+            handler: 'button'
+        ],
+        lock: [
+            label: 'Lock',
+            source: 'OpenHASP Manager',
+            capability: 'capability.lock',
+            direction: 'both',
+            handler: 'lock'
+        ],
+        temperatureDisplay: [
+            label: 'Temperature',
+            source: 'OpenHASP Manager',
+            capability: 'capability.temperatureMeasurement',
+            direction: 'toOpenHASP',
+            handler: 'attribute',
+            attribute: 'temperature'
+        ],
+        humidityDisplay: [
+            label: 'Humidity',
+            source: 'OpenHASP Manager',
+            capability: 'capability.relativeHumidityMeasurement',
+            direction: 'toOpenHASP',
+            handler: 'attribute',
+            attribute: 'humidity'
+        ],
+        illuminanceDisplay: [
+            label: 'Illuminance',
+            source: 'OpenHASP Manager',
+            capability: 'capability.illuminanceMeasurement',
+            direction: 'toOpenHASP',
+            handler: 'attribute',
+            attribute: 'illuminance'
+        ],
+        contactDisplay: [
+            label: 'Contact',
+            source: 'OpenHASP Manager',
+            capability: 'capability.contactSensor',
+            direction: 'toOpenHASP',
+            handler: 'attribute',
+            attribute: 'contact'
+        ],
+        motionDisplay: [
+            label: 'Motion',
+            source: 'OpenHASP Manager',
+            capability: 'capability.motionSensor',
+            direction: 'toOpenHASP',
+            handler: 'attribute',
+            attribute: 'motion'
+        ]
+    ]
+}
+
+Map registeredExternalTypeOptions() {
+    Map registry = (state.typeRegistry ?: [:]) as Map
+    Map types = (registry.types ?: [:]) as Map
+    types.findAll { String key, Map definition ->
+        ((definition.providers ?: [:]) as Map)
+    }.collectEntries { String key, Map definition ->
+        [(key): definition.label ?: key]
+    }
+}
+
+String registryProviderKey() {
+    "${app.name ?: 'OpenHASP'}:${app.id ?: app.label ?: 'manager'}"
 }
 
 boolean rowAcceptsInput(String type) {

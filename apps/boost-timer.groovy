@@ -4,6 +4,14 @@
  * Licensed under the Apache License, Version 2.0.
  */
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import groovy.transform.Field
+
+@Field static final String TYPE_REGISTRY_EVENT = 'openhasp:typeRegistry'
+@Field static final String TYPE_REGISTRY_REQUEST_EVENT = 'openhasp:typeRegistryRequest'
+@Field static final String TYPE_REGISTRY_PROTOCOL = 'openhasp.typeRegistry.v1'
+
 definition(
     name: 'Boost Timer',
     namespace: 'nichuk',
@@ -21,6 +29,7 @@ preferences {
 
 def mainPage() {
     dynamicPage(name: 'mainPage', title: 'Boost Timer', install: true, uninstall: true) {
+        registerBoostTimerType()
         section('Timer') {
             input 'timerLabel', 'text', title: 'Timer label', defaultValue: 'Boost Timer', required: true
             input 'targetSwitch', 'capability.switch', title: 'Target switch to keep on', multiple: false, required: true
@@ -49,12 +58,15 @@ void updated() {
 void uninstalled() {
     unschedule()
     unsubscribe()
+    unregisterBoostTimerType()
     deleteChildDeviceIfPresent()
 }
 
 void initialize() {
     unschedule()
     unsubscribe()
+    subscribe(location, TYPE_REGISTRY_REQUEST_EVENT, typeRegistryRequestHandler)
+    registerBoostTimerType()
     ensureTimerDevice()
     if (triggerSwitches) subscribe(triggerSwitches, 'switch.on', triggerHandler)
     if (triggerButtons) subscribe(triggerButtons, 'pushed', triggerHandler)
@@ -183,4 +195,66 @@ long safeLong(Object value, long fallback) {
     } catch (ignored) {
         return fallback
     }
+}
+
+void registerBoostTimerType() {
+    publishTypeRegistryEvent('register', boostTimerTypeDefinitions())
+}
+
+void unregisterBoostTimerType() {
+    publishTypeRegistryEvent('unregister', [:])
+}
+
+void typeRegistryRequestHandler(evt) {
+    Map request = parseJsonMap(evt?.value)
+    if (request.protocol != TYPE_REGISTRY_PROTOCOL) return
+    if (request.action == 'discover') registerBoostTimerType()
+}
+
+void publishTypeRegistryEvent(String action, Map types) {
+    try {
+        sendLocationEvent(
+            name: TYPE_REGISTRY_EVENT,
+            value: JsonOutput.toJson([
+                protocol: TYPE_REGISTRY_PROTOCOL,
+                action: action,
+                provider: registryProviderKey(),
+                providerLabel: app.label ?: app.name,
+                appId: "${app.id ?: ''}",
+                types: types,
+                at: now()
+            ]),
+            isStateChange: true
+        )
+    } catch (Exception e) {
+        log.warn "Could not publish OpenHASP type registry event: ${e.class.simpleName}: ${e.message}"
+    }
+}
+
+Map boostTimerTypeDefinitions() {
+    [
+        timerButton: [
+            label: 'Boost timer',
+            source: 'Boost Timer',
+            capability: 'capability.pushableButton',
+            direction: 'toHubitat',
+            handler: 'boostTimer',
+            integrationType: 'boostTimer',
+            requiredAttributes: ['integrationType', 'openHaspRowType', 'displayText', 'remainingSeconds'],
+            command: 'boost'
+        ]
+    ]
+}
+
+Map parseJsonMap(Object value) {
+    try {
+        def parsed = new JsonSlurper().parseText("${value ?: '{}'}")
+        parsed instanceof Map ? parsed as Map : [:]
+    } catch (ignored) {
+        [:]
+    }
+}
+
+String registryProviderKey() {
+    "${app.name ?: 'Boost Timer'}:${app.id ?: app.label ?: 'timer'}"
 }

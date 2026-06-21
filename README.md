@@ -2,7 +2,7 @@
 
 Reusable Hubitat integration for OpenHASP MQTT touch panels.
 
-Version 0.4.4 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
+Version 0.4.5 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
 
 The MCP/server tooling used during development is not part of day-to-day operation. Once installed, the integration runs on the Hubitat hub and talks to the configured MQTT broker.
 
@@ -19,7 +19,7 @@ The MCP/server tooling used during development is not part of day-to-day operati
 - Optional virtual lighting controls can be created for dashboards.
 - Generic boost timers are provided by the optional `Boost Timer` app and `Boost Timer Device`; OpenHASP can trigger and display them, but the timing behavior is reusable outside OpenHASP.
 
-Supported native Hubitat row types include switch, dimmer, button, lock, temperature, humidity, illuminance, contact, and motion. Boost Timer rows can target devices created by the optional Boost Timer app.
+Supported native Hubitat row types include switch, dimmer, button, lock, temperature, humidity, illuminance, contact, and motion. Optional row types are discovered through Hubitat Location Events. The optional Boost Timer app registers the Boost timer row type when installed/initialized, so it only appears as a normal dropdown option when that integration is present and has answered discovery.
 
 ## Current Bathroom Example
 
@@ -84,6 +84,7 @@ The connector will create a child device, connect to MQTT, subscribe to panel st
 Commands from the panel go to Hubitat target devices. State from Hubitat target devices is mirrored back to the panel. Panel-originated commands are not immediately echoed back to the same panel object, which avoids slider and switch bounce.
 
 See [Configuration](docs/configuration.md) for the full walkthrough.
+See [Type Registry](docs/type-registry.md) for the shared row-type extension contract.
 
 ![OpenHASP Manager configuration](docs/images/openhasp-manager-config.png)
 

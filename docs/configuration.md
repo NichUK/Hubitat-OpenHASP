@@ -45,6 +45,8 @@ Optional reusable boost timer support is packaged with:
 - `apps/boost-timer.groovy`
 - `drivers/boost-timer-device.groovy`
 
+OpenHASP Manager has built-in standard row types. Optional apps can register additional row types by answering the manager's Hubitat Location Event discovery request. The Boost Timer row type appears in the OpenHASP row dropdown after the Boost Timer app has been installed/initialized and has answered discovery.
+
 ## 3. Create the Manager App
 
 Open Apps and add `OpenHASP Manager`.
@@ -86,6 +88,8 @@ For the lighting rows, select the real Hubitat devices:
 - Bedroom switch and Bedroom dimmer rows: `Bedroom Main`
 
 For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app directly in the row's `Timer target` field. Leave the target blank only for the built-in legacy fallback timer.
+
+If `Boost timer` is not present in the row type dropdown, open or install the `Boost Timer` app once, then press `Refresh optional row types` in OpenHASP Manager.
 
 ## 5. MQTT Broker
 
