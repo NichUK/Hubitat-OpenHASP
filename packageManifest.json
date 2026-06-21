@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Reusable OpenHASP binding app for Hubitat MQTT Import devices. MQTT Import owns the broker connection; this app binds imported OpenHASP controls to Hubitat devices, including raw JSON slider event devices plus command devices, and manages timer behavior.",
+  "releaseNotes": "Adds a parent OpenHASP Manager with child OpenHASP Panel apps. Each panel has explicit mapping rows for MQTT Import controls, Hubitat target devices, translation behavior, optional dashboard controls, and timer behavior.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",
@@ -17,6 +17,15 @@
       "required": true,
       "oauth": false,
       "primary": true
+    },
+    {
+      "id": "2f5586b9-b2aa-4d16-9ff5-c47cfdf6aee9",
+      "name": "OpenHASP Panel",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-panel.groovy",
+      "required": true,
+      "oauth": false,
+      "primary": false
     }
   ],
   "drivers": []

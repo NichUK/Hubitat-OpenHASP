@@ -59,42 +59,69 @@ https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.j
 
 Or paste `apps/openhasp-manager.groovy` manually from the package manifest.
 
-## 4. Create the Manager App
+## 4. Create the Manager App and Add a Panel
 
-Open Apps, add `OpenHASP Manager`, and configure:
+Open Apps and add `OpenHASP Manager`.
+
+Inside `OpenHASP Manager`, choose `Add OpenHASP panel`. Configure the child panel:
 
 - Plate name: `bathroom_panel`
+- Panel label: `Bathroom Panel`
 - Timer increment minutes: `1` for testing, `60` for production
 - Timer maximum minutes: `3` for testing, `180` for production
-- Office panel switch: `Bathroom Panel Office Main Switch`
-- Office panel dimmer event device: `Bathroom Panel Office Main Dimmer Event`
-- Office panel dimmer command device: `Bathroom Panel Office Main Dimmer Command`
-- Office target: `Office Main`
-- Bedroom panel switch: `Bathroom Panel Bedroom Main Switch`
-- Bedroom panel dimmer event device: `Bathroom Panel Bedroom Main Dimmer Event`
-- Bedroom panel dimmer command device: `Bathroom Panel Bedroom Main Dimmer Command`
-- Bedroom target: `Bedroom Main`
-- UFH panel timer button or switch: the MQTT Import device mapped to `p1b21`
-- UFH timer text device: optional, only if supplied by a driver with an arbitrary text command
-- UFH state text device: optional, only if supplied by a driver with an arbitrary text command
-- Create and use a safe virtual UFH switch: enabled for testing
+- Create virtual lighting controls for dashboards: enabled when you want app-created Hubitat control devices for the bound lights
 
-Save the app. It does not create an MQTT connection; it uses the MQTT Import devices you selected.
+Lighting mapping 1:
+
+- Name: `Office Main`
+- Panel switch event/command device: `Bathroom Panel Office Main Switch`
+- Panel slider event device: `Bathroom Panel Office Main Dimmer Event`
+- Panel slider command device: `Bathroom Panel Office Main Dimmer Command`
+- Hubitat light/dimmer to control: `Office Main`
+
+Lighting mapping 2:
+
+- Name: `Bedroom Main`
+- Panel switch event/command device: `Bathroom Panel Bedroom Main Switch`
+- Panel slider event device: `Bathroom Panel Bedroom Main Dimmer Event`
+- Panel slider command device: `Bathroom Panel Bedroom Main Dimmer Command`
+- Hubitat light/dimmer to control: `Bedroom Main`
+
+Timer mapping:
+
+- Timer name: `UFH`
+- Panel timer button or switch: the MQTT Import device mapped to `p1b21`
+- Hubitat switch to keep on while timer is active: blank until the real heating actuator is identified
+- Create and use a safe virtual timer switch: enabled for testing
+- Timer text/state devices: optional, only if supplied by a driver with an arbitrary text command
+
+Save the child panel app. It does not create an MQTT connection; it uses the MQTT Import devices you selected.
 
 ## 5. Check Devices
 
-MQTT Import devices should appear in Hubitat as normal devices. The manager app also creates `Bathroom UFH Virtual Switch` when the safe testing switch is enabled.
+MQTT Import devices should appear in Hubitat as normal devices. They represent the panel's MQTT controls and are used by the manager app as event and command endpoints.
+
+When virtual lighting controls are enabled, the panel child app creates:
+
+- `<Panel label> Office Main Control`
+- `<Panel label> Bedroom Main Control`
+
+Use these app-created controls, the real target devices, or the physical OpenHASP panel for day-to-day Hubitat control. The MQTT Import panel devices can update the panel directly, but they may not emit a panel-originated state event when commanded from Hubitat, so they are not the best dashboard-facing devices.
+
+The panel child app also creates `<Panel label> UFH` when the safe testing switch is enabled.
 
 ## 6. Binding Model
 
-The app binds by selected devices, not by direct MQTT topics. This keeps the MQTT connection in Hubitat MQTT Import and makes the app reusable for any OpenHASP plate whose controls are mapped as Hubitat devices.
+The app binds by selected devices, not by direct MQTT topics. This keeps the MQTT connection in Hubitat MQTT Import and makes the child app reusable for any OpenHASP plate whose controls are mapped as Hubitat devices.
 
 ## 7. Acceptance Checks
 
 - Tapping Office Main on the panel turns the Hubitat Office Main device on/off.
 - Moving the Office Main slider changes the Hubitat Office Main level.
 - Hubitat changes to Office Main update `p1b42` and `p1b43` on the panel.
+- Commanding `<Panel label> Office Main Control` from Hubitat controls Office Main and updates the panel.
 - Bedroom Main behaves the same way with `p1b52` and `p1b53`.
+- Commanding `<Panel label> Bedroom Main Control` from Hubitat controls Bedroom Main and updates the panel.
 - Tapping the UFH timer button adds 1 minute, then 2 minutes, then caps at 3 minutes.
 - While the timer is active, the UFH virtual switch is on.
 - When the timer expires, the UFH virtual switch turns off.

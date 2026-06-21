@@ -1,0 +1,448 @@
+/*
+ * Copyright 2026 NichUK
+ *
+ * Licensed under the Apache License, Version 2.0.
+ */
+
+import groovy.json.JsonSlurper
+
+definition(
+    name: 'OpenHASP Panel',
+    namespace: 'nichuk',
+    author: 'NichUK',
+    description: 'Maps one OpenHASP panel, imported through Hubitat MQTT Import, to Hubitat devices.',
+    category: 'Convenience',
+    parent: 'nichuk:OpenHASP Manager',
+    importUrl: 'https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-panel.groovy',
+    iconUrl: '',
+    iconX2Url: '',
+    singleInstance: false
+)
+
+preferences {
+    page(name: 'mainPage')
+}
+
+def mainPage() {
+    dynamicPage(name: 'mainPage', title: panelPageTitle(), install: true, uninstall: true) {
+        section('Panel') {
+            paragraph 'First map this panel in Hubitat MQTT Import. Then select the imported MQTT devices below and bind them to the Hubitat devices they should control.'
+            input 'panelLabel', 'text', title: 'Panel label', defaultValue: 'Bathroom Panel', required: true
+            input 'plateName', 'text', title: 'OpenHASP plate name', defaultValue: 'bathroom_panel', required: true
+            input 'manageLightingControls', 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true
+        }
+
+        (1..4).each { Integer index ->
+            section("Lighting mapping ${index}") {
+                paragraph 'Map one OpenHASP switch/slider group to one Hubitat dimmer. Leave unused rows blank.'
+                input "light${index}Name", 'text', title: 'Name', required: false
+                input "light${index}PanelSwitch", 'capability.switch', title: 'Panel switch event/command device', multiple: false, required: false
+                input "light${index}PanelLevelEvent", 'capability.switch', title: 'Panel slider event device (raw JSON)', multiple: false, required: false
+                input "light${index}PanelLevelCommand", 'capability.switchLevel', title: 'Panel slider command device', multiple: false, required: false
+                input "light${index}LevelTextDevice", 'capability.notification', title: 'Panel level text device (optional)', multiple: false, required: false
+                input "light${index}Target", 'capability.switchLevel', title: 'Hubitat light/dimmer to control', multiple: false, required: false
+            }
+        }
+
+        section('Timer mapping') {
+            input 'timerName', 'text', title: 'Timer name', defaultValue: 'Underfloor Heating', required: false
+            input 'timerPanelButton', 'capability.pushableButton', title: 'Panel timer button (preferred)', multiple: false, required: false
+            input 'timerPanelSwitch', 'capability.switch', title: 'Panel timer switch/button fallback', multiple: false, required: false
+            input 'timerTargetSwitch', 'capability.switch', title: 'Hubitat switch to keep on while timer is active', multiple: false, required: false
+            input 'manageUfhVirtualSwitch', 'bool', title: 'Create and use a safe virtual timer switch when no target is selected', defaultValue: true, required: true
+            input 'timerIncrementMinutes', 'number', title: 'Timer increment minutes', defaultValue: 1, required: true
+            input 'timerMaxMinutes', 'number', title: 'Timer maximum minutes', defaultValue: 3, required: true
+            input 'timerTextDevice', 'capability.notification', title: 'Panel timer text device (optional)', multiple: false, required: false
+            input 'timerStateTextDevice', 'capability.notification', title: 'Panel timer state text device (optional)', multiple: false, required: false
+        }
+
+        section('Options') {
+            input 'debugLogging', 'bool', title: 'Enable debug logging', defaultValue: false, required: false
+            input 'refreshBindings', 'button', title: 'Refresh subscriptions and child devices'
+        }
+    }
+}
+
+String panelPageTitle() {
+    String label = settingValue('panelLabel')
+    "OpenHASP Panel${label ? " - ${label}" : ''}"
+}
+
+void installed() {
+    initialize()
+}
+
+void updated() {
+    unsubscribe()
+    unschedule()
+    initialize()
+}
+
+void appButtonHandler(String buttonName) {
+    if (buttonName == 'refreshBindings') {
+        updated()
+    }
+}
+
+void initialize() {
+    if (settingEnabled(settingValue('manageLightingControls'), true)) {
+        lightMappings().each { Map mapping -> managedLightingControl(mapping) }
+    }
+    if (settingEnabled(settingValue('manageUfhVirtualSwitch'), true)) {
+        managedTimerSwitch()
+    }
+    subscribePanelControls()
+    subscribeTargets()
+    syncAllTargetsToPanel()
+    updateTimerOutputs()
+}
+
+void subscribePanelControls() {
+    lightMappings().each { Map mapping ->
+        if (mapping.panelSwitch) subscribe(mapping.panelSwitch, 'switch', lightPanelSwitchHandler)
+        if (mapping.panelLevelEvent) subscribe(mapping.panelLevelEvent, 'switch', lightPanelLevelEventHandler)
+        if (mapping.panelLevelCommand) subscribe(mapping.panelLevelCommand, 'level', lightPanelLevelHandler)
+    }
+    def button = settingValue('timerPanelButton')
+    def timerSwitch = settingValue('timerPanelSwitch')
+    if (button) subscribe(button, 'pushed', timerPanelButtonHandler)
+    if (timerSwitch) subscribe(timerSwitch, 'switch', timerPanelSwitchHandler)
+}
+
+void subscribeTargets() {
+    lightMappings().each { Map mapping ->
+        if (mapping.target) {
+            subscribe(mapping.target, 'switch', lightTargetSwitchHandler)
+            subscribe(mapping.target, 'level', lightTargetLevelHandler)
+        }
+        def control = activeLightingControl(mapping)
+        if (control) {
+            subscribe(control, 'switch', lightControlSwitchHandler)
+            subscribe(control, 'level', lightControlLevelHandler)
+        }
+    }
+    def timer = activeTimerTarget()
+    if (timer) {
+        subscribe(timer, 'switch', timerTargetSwitchHandler)
+    }
+}
+
+void lightPanelSwitchHandler(evt) {
+    Map mapping = lightMappingForDevice(evt.deviceId, 'panelSwitch')
+    if (mapping) commandSwitch(mapping.target, normalizeSwitchValue(evt.value))
+}
+
+void lightPanelLevelEventHandler(evt) {
+    Map mapping = lightMappingForDevice(evt.deviceId, 'panelLevelEvent')
+    if (mapping) commandLevel(mapping.target, normalizeLevelValue(evt.value, 100))
+}
+
+void lightPanelLevelHandler(evt) {
+    Map mapping = lightMappingForDevice(evt.deviceId, 'panelLevelCommand')
+    if (mapping) commandLevel(mapping.target, normalizeLevelValue(evt.value, 100))
+}
+
+void lightControlSwitchHandler(evt) {
+    Map mapping = lightMappingForControl(evt.deviceId)
+    if (mapping) commandSwitch(mapping.target, evt.value)
+}
+
+void lightControlLevelHandler(evt) {
+    Map mapping = lightMappingForControl(evt.deviceId)
+    if (mapping) commandLevel(mapping.target, evt.value)
+}
+
+void lightTargetSwitchHandler(evt) {
+    Map mapping = lightMappingForDevice(evt.deviceId, 'target')
+    if (!mapping) return
+    commandSwitch(mapping.panelSwitch, evt.value)
+    syncLightingControl(mapping, evt.value, mapping.target?.currentLevel ?: 100)
+}
+
+void lightTargetLevelHandler(evt) {
+    Map mapping = lightMappingForDevice(evt.deviceId, 'target')
+    if (!mapping) return
+    commandLevelOnly(mapping.panelLevelCommand, evt.value)
+    sendTextCommand(mapping.levelTextDevice, "${safeInt(evt.value, 0)}")
+    syncLightingControl(mapping, mapping.target?.currentSwitch ?: 'on', evt.value)
+}
+
+void timerPanelButtonHandler(evt) {
+    addTimerIncrement()
+}
+
+void timerPanelSwitchHandler(evt) {
+    addTimerIncrement()
+}
+
+void timerTargetSwitchHandler(evt) {
+    sendTextCommand(settingValue('timerStateTextDevice'), evt.value == 'on' ? 'ON' : 'OFF')
+}
+
+void syncAllTargetsToPanel() {
+    lightMappings().each { Map mapping ->
+        if (!mapping.target) return
+        lightTargetSwitchHandler([deviceId: mapping.target.id, value: mapping.target.currentSwitch ?: 'off'])
+        lightTargetLevelHandler([deviceId: mapping.target.id, value: mapping.target.currentLevel ?: 100])
+    }
+    def timer = activeTimerTarget()
+    if (timer) {
+        timerTargetSwitchHandler([value: timer.currentSwitch ?: 'off'])
+    }
+}
+
+void addTimerIncrement() {
+    long nowSeconds = epochSeconds()
+    int incrementSeconds = Math.max(1, safeInt(settingValue('timerIncrementMinutes'), 1)) * 60
+    int maxSeconds = Math.max(incrementSeconds, safeInt(settingValue('timerMaxMinutes'), 3) * 60)
+    state.timerDeadlineEpochSeconds = addTimerSeconds(nowSeconds, state.timerDeadlineEpochSeconds as Long, incrementSeconds, maxSeconds)
+    commandSwitch(activeTimerTarget(), 'on')
+    updateTimerOutputs()
+    runIn(1, 'timerTick')
+}
+
+void timerTick() {
+    long remaining = remainingTimerSeconds()
+    if (remaining <= 0) {
+        state.remove('timerDeadlineEpochSeconds')
+        commandSwitch(activeTimerTarget(), 'off')
+        updateTimerOutputs()
+        return
+    }
+    updateTimerOutputs()
+    runIn(1, 'timerTick')
+}
+
+void updateTimerOutputs() {
+    long remaining = remainingTimerSeconds()
+    int incrementSeconds = Math.max(1, safeInt(settingValue('timerIncrementMinutes'), 1)) * 60
+    sendTextCommand(settingValue('timerTextDevice'), timerButtonText(remaining, incrementSeconds))
+    def timer = activeTimerTarget()
+    String stateText = remaining > 0 || timer?.currentSwitch == 'on' ? 'ON' : 'OFF'
+    sendTextCommand(settingValue('timerStateTextDevice'), stateText)
+}
+
+long remainingTimerSeconds() {
+    remainingSeconds(epochSeconds(), state.timerDeadlineEpochSeconds as Long)
+}
+
+List<Map> lightMappings() {
+    (1..4).collect { Integer index ->
+        [
+            index: index,
+            name: settingValue("light${index}Name") ?: "Light ${index}",
+            panelSwitch: settingValue("light${index}PanelSwitch"),
+            panelLevelEvent: settingValue("light${index}PanelLevelEvent"),
+            panelLevelCommand: settingValue("light${index}PanelLevelCommand"),
+            levelTextDevice: settingValue("light${index}LevelTextDevice"),
+            target: settingValue("light${index}Target")
+        ]
+    }.findAll { Map mapping ->
+        mapping.target || mapping.panelSwitch || mapping.panelLevelEvent || mapping.panelLevelCommand
+    }
+}
+
+Object settingValue(String name) {
+    def value = settings[name]
+    if (value != null) {
+        return value
+    }
+    try {
+        return parent?.legacySetting(name)
+    } catch (MissingMethodException ignored) {
+        return null
+    }
+}
+
+Map lightMappingForDevice(Object deviceId, String key) {
+    lightMappings().find { Map mapping -> sameDevice(mapping[key], deviceId) }
+}
+
+Map lightMappingForControl(Object deviceId) {
+    lightMappings().find { Map mapping -> sameDevice(activeLightingControl(mapping), deviceId) }
+}
+
+boolean sameDevice(device, Object deviceId) {
+    device && "${device.id}" == "${deviceId}"
+}
+
+def activeLightingControl(Map mapping) {
+    settingEnabled(settingValue('manageLightingControls'), true) ? managedLightingControl(mapping) : null
+}
+
+def managedLightingControl(Map mapping) {
+    String plate = settingValue('plateName') ?: 'panel'
+    String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
+    String dni = "openhasp-${plate}-light-${mapping.index}-control"
+    String label = "${labelBase} ${mapping.name} Control"
+    def child = getChildDevice(dni)
+    if (!child) {
+        child = addChildDevice('hubitat', 'Virtual Dimmer', dni, [
+            name: label,
+            label: label,
+            isComponent: false
+        ])
+    } else if (child.displayName != label) {
+        try {
+            child.setLabel(label)
+        } catch (Exception ignored) {
+        }
+    }
+    return child
+}
+
+void syncLightingControl(Map mapping, Object switchValue, Object levelValue) {
+    def child = activeLightingControl(mapping)
+    if (!child) return
+    String normalizedSwitch = normalizeSwitchValue(switchValue)
+    int normalizedLevel = Math.max(1, Math.min(100, safeInt(levelValue, 100)))
+    child.sendEvent(name: 'switch', value: normalizedSwitch, isStateChange: false)
+    child.sendEvent(name: 'level', value: normalizedLevel, unit: '%', isStateChange: false)
+}
+
+def activeTimerTarget() {
+    settingValue('timerTargetSwitch') ?: (settingEnabled(settingValue('manageUfhVirtualSwitch'), true) ? managedTimerSwitch() : null)
+}
+
+def managedTimerSwitch() {
+    String plate = settingValue('plateName') ?: 'panel'
+    String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
+    String dni = "openhasp-${plate}-timer"
+    String label = "${labelBase} ${settingValue('timerName') ?: 'Timer'}"
+    def child = getChildDevice(dni)
+    if (!child) {
+        child = addChildDevice('hubitat', 'Virtual Switch', dni, [
+            name: label,
+            label: label,
+            isComponent: false
+        ])
+    } else if (child.displayName != label) {
+        try {
+            child.setLabel(label)
+        } catch (Exception ignored) {
+        }
+    }
+    return child
+}
+
+void commandSwitch(device, Object value) {
+    if (!device) return
+    String normalized = normalizeSwitchValue(value)
+    if (debugLogging) log.debug "Commanding ${device.displayName} switch ${normalized}"
+    normalized == 'on' ? device.on() : device.off()
+}
+
+void commandLevel(device, Object level) {
+    if (!device) return
+    int bounded = Math.max(1, Math.min(100, safeInt(level, 100)))
+    if (debugLogging) log.debug "Commanding ${device.displayName} level ${bounded}"
+    device.setLevel(bounded)
+    device.on()
+}
+
+void commandLevelOnly(device, Object level) {
+    if (!device) return
+    int bounded = Math.max(1, Math.min(100, safeInt(level, 100)))
+    if (debugLogging) log.debug "Commanding ${device.displayName} level ${bounded}"
+    device.setLevel(bounded)
+}
+
+void sendTextCommand(device, String text) {
+    if (!device) return
+    if (debugLogging) log.debug "Commanding ${device.displayName} text ${text}"
+    try {
+        device.deviceNotification(text)
+        return
+    } catch (MissingMethodException ignored) {
+    } catch (Exception e) {
+        if (debugLogging) log.debug "deviceNotification failed for ${device.displayName}: ${e.message}"
+    }
+    try {
+        device.speak(text)
+        return
+    } catch (MissingMethodException ignored) {
+    } catch (Exception e) {
+        if (debugLogging) log.debug "speak failed for ${device.displayName}: ${e.message}"
+    }
+    if (text == 'ON' || text == 'OFF') {
+        commandSwitch(device, text == 'ON' ? 'on' : 'off')
+    }
+}
+
+long epochSeconds() {
+    Math.floor(now() / 1000D) as long
+}
+
+int safeInt(Object value, int fallback = 0) {
+    try {
+        return "${value}".toBigDecimal().intValue()
+    } catch (ignored) {
+        return fallback
+    }
+}
+
+String normalizeSwitchValue(Object value) {
+    Object normalized = openHaspPayloadValue(value)
+    if (normalized instanceof Boolean) {
+        return normalized ? 'on' : 'off'
+    }
+    if (normalized instanceof Number) {
+        return normalized != 0 ? 'on' : 'off'
+    }
+    String text = "${normalized}".trim().toLowerCase()
+    text in ['1', 'true', 'on', 'yes'] ? 'on' : 'off'
+}
+
+int normalizeLevelValue(Object value, int fallback = 100) {
+    safeInt(openHaspPayloadValue(value), fallback)
+}
+
+Object openHaspPayloadValue(Object value) {
+    if (value == null || !(value instanceof CharSequence)) {
+        return value
+    }
+    String text = value.toString().trim()
+    if (!text.startsWith('{')) {
+        return value
+    }
+    try {
+        def parsed = new JsonSlurper().parseText(text)
+        if (parsed instanceof Map && parsed.containsKey('val')) {
+            return parsed.val
+        }
+    } catch (ignored) {
+    }
+    value
+}
+
+long addTimerSeconds(Long nowEpochSeconds, Long currentDeadlineEpochSeconds, int incrementSeconds, int maxSeconds) {
+    long remaining = remainingSeconds(nowEpochSeconds, currentDeadlineEpochSeconds)
+    long nextRemaining = Math.min(maxSeconds as long, remaining + incrementSeconds)
+    nowEpochSeconds + nextRemaining
+}
+
+long remainingSeconds(Long nowEpochSeconds, Long deadlineEpochSeconds) {
+    if (!deadlineEpochSeconds) {
+        return 0L
+    }
+    Math.max(0L, deadlineEpochSeconds - nowEpochSeconds)
+}
+
+String timerButtonText(long remainingSeconds, int incrementSeconds) {
+    if (remainingSeconds <= 0) {
+        return "Start ${Math.max(1, Math.round(incrementSeconds / 60D) as int)}m"
+    }
+    long minutes = Math.floor(remainingSeconds / 60D) as long
+    long seconds = remainingSeconds % 60
+    "${minutes}:${seconds.toString().padLeft(2, '0')}"
+}
+
+boolean settingEnabled(Object value, boolean defaultValue = true) {
+    if (value == null) {
+        return defaultValue
+    }
+    if (value instanceof Boolean) {
+        return value
+    }
+    !("${value}".trim().toLowerCase() in ['false', '0', 'no', 'off'])
+}
