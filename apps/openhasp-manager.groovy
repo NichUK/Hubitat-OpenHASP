@@ -129,14 +129,16 @@ void mappingInputs(String plateId, String rowId, int rowNumber) {
         input "${prefix}targetMotion", 'capability.motionSensor', title: 'Target', multiple: false, required: false, width: 2
     } else if (type == 'timerButton') {
         input "${prefix}targetBoostTimer", 'capability.pushableButton', title: 'Timer target', multiple: false, required: false, width: 2
-        if (row.targetBoostTimer && !isBoostTimerDevice(row.targetBoostTimer)) paragraph 'Selected target does not expose Boost Timer metadata, so this row will use the legacy fallback timer.'
+        def boostTimerTarget = configuredRowDevice(plateId, rowId, 'targetBoostTimer', row.targetBoostTimer)
+        if (boostTimerTarget && !isBoostTimerDevice(boostTimerTarget)) paragraph 'Selected target does not expose Boost Timer metadata, so this row will use the legacy fallback timer.'
         input "${prefix}labelTopic", 'text', title: 'Button label', defaultValue: row.labelTopic ?: '', required: false, width: 2
     } else {
         input "${prefix}targetSwitch", 'capability.switch', title: 'Target', multiple: false, required: false, width: 2
         input "${prefix}labelTopic", 'text', title: 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
     }
     if (type == 'timerButton') {
-        boolean legacyFallback = !isBoostTimerDevice(row.targetBoostTimer)
+        def boostTimerTarget = configuredRowDevice(plateId, rowId, 'targetBoostTimer', row.targetBoostTimer)
+        boolean legacyFallback = !isBoostTimerDevice(boostTimerTarget)
         if (legacyFallback) {
             paragraph '<b>Legacy fallback timer</b>'
             input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
@@ -551,17 +553,50 @@ void syncTargetsToPlate(Map plate) {
 }
 
 def rowTarget(Map row) {
-    if (row.type == 'button') return row.targetButton
-    if (row.type == 'lock') return row.targetLock
-    if (row.type == 'temperatureDisplay') return row.targetTemperature
-    if (row.type == 'humidityDisplay') return row.targetHumidity
-    if (row.type == 'illuminanceDisplay') return row.targetIlluminance
-    if (row.type == 'contactDisplay') return row.targetContact
-    if (row.type == 'motionDisplay') return row.targetMotion
+    if (row.type == 'button') return configuredRowDevice(row, 'targetButton')
+    if (row.type == 'lock') return configuredRowDevice(row, 'targetLock')
+    if (row.type == 'temperatureDisplay') return configuredRowDevice(row, 'targetTemperature')
+    if (row.type == 'humidityDisplay') return configuredRowDevice(row, 'targetHumidity')
+    if (row.type == 'illuminanceDisplay') return configuredRowDevice(row, 'targetIlluminance')
+    if (row.type == 'contactDisplay') return configuredRowDevice(row, 'targetContact')
+    if (row.type == 'motionDisplay') return configuredRowDevice(row, 'targetMotion')
     if (row.type == 'timerButton') {
-        if (isBoostTimerDevice(row.targetBoostTimer)) return row.targetBoostTimer
+        def boostTimerTarget = configuredRowDevice(row, 'targetBoostTimer')
+        if (isBoostTimerDevice(boostTimerTarget)) return boostTimerTarget
     }
-    row.type == 'dimmer' ? row.targetDimmer : row.targetSwitch
+    row.type == 'dimmer' ? configuredRowDevice(row, 'targetDimmer') : configuredRowDevice(row, 'targetSwitch')
+}
+
+def configuredRowDevice(Map row, String key) {
+    String settingName = rowSettingNameFromKey(row, key)
+    configuredRowDevice(settingName ? settings[settingName] : null, row[key])
+}
+
+def configuredRowDevice(String plateId, String rowId, String key, Object fallback = null) {
+    configuredRowDevice(settings[rowSetting(plateId, rowId, key)], fallback)
+}
+
+def configuredRowDevice(Object selected, Object fallback = null) {
+    deviceFromSetting(selected) ?: deviceFromSetting(fallback)
+}
+
+def deviceFromSetting(Object value) {
+    if (!value) return null
+    if (value instanceof Collection) return value ? deviceFromSetting(value.first()) : null
+    try {
+        value.currentValue('switch')
+        return value
+    } catch (MissingMethodException ignored) {
+        return null
+    } catch (Exception ignored) {
+        return value instanceof Map ? null : value
+    }
+}
+
+String rowSettingNameFromKey(Map row, String key) {
+    if (!row?.key) return null
+    List parts = "${row.key}".split(':', 2) as List
+    parts.size() == 2 ? rowSetting(parts[0] as String, parts[1] as String, key) : null
 }
 
 int currentTargetLevel(Map row) {

@@ -1,15 +1,15 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "minimumHEVersion": "2.3.0",
-  "dateReleased": "2026-06-21",
+  "dateReleased": "2026-06-22",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
   "category": "Integrations",
   "tags": "OpenHASP, MQTT, Dashboard, Lighting, Timer",
-  "releaseNotes": "Adds Location Event discovery so optional integrations such as Boost Timer publish their own OpenHASP row types without Hub Variables.",
+  "releaseNotes": "Fixes configured device resolution after Hubitat serializes selected row targets, allowing reusable Boost Timer targets to remain bound after save/reload.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",
