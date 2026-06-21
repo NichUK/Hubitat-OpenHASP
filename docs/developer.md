@@ -10,6 +10,8 @@ Dimmer updates have three possible sources: the OpenHASP raw event device, the a
 
 Switch updates use the same pending-target model. Because a single MQTT Import switch can be both the OpenHASP state event device and the command endpoint, mirrored commands to the panel switch are marked as expected echoes and ignored if they return through the subscription path.
 
+Panel-originated switch and slider events are not immediately mirrored back to the same OpenHASP object; the panel has already changed its own UI. Hubitat-originated changes and target-device reports are still mirrored back to OpenHASP. Text label updates use the optional `OpenHASP Text Label` driver because MQTT Import does not currently publish arbitrary string command payloads.
+
 ```mermaid
 flowchart LR
     OpenHASP["OpenHASP plate"] -->|"MQTT state events"| Broker["MQTT broker"]

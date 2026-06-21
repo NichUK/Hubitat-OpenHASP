@@ -30,6 +30,13 @@ def mainPage() {
             input 'panelLabel', 'text', title: 'Panel label', defaultValue: 'Bathroom Panel', required: true
             input 'plateName', 'text', title: 'OpenHASP plate name', defaultValue: 'bathroom_panel', required: true
             input 'manageLightingControls', 'bool', title: 'Create virtual lighting controls for dashboards', defaultValue: true, required: true
+            input 'manageTextLabels', 'bool', title: 'Create OpenHASP MQTT text label devices', defaultValue: true, required: true, submitOnChange: true
+            if (settingEnabled(settingValue('manageTextLabels'), false)) {
+                input 'mqttBrokerUri', 'text', title: 'MQTT broker URI for text labels', description: 'Example: tcp://10.0.0.65:1883', required: true
+                input 'mqttUsername', 'text', title: 'MQTT username for text labels', required: false
+                input 'mqttPassword', 'password', title: 'MQTT password for text labels', required: false
+                input 'mqttRetainTextLabels', 'bool', title: 'Retain OpenHASP label text messages', defaultValue: false, required: true
+            }
         }
 
         (1..4).each { Integer index ->
@@ -39,6 +46,7 @@ def mainPage() {
                 input "light${index}PanelSwitch", 'capability.switch', title: 'Panel switch event/command device', multiple: false, required: false
                 input "light${index}PanelLevelEvent", 'capability.switch', title: 'Panel slider event device (raw JSON)', multiple: false, required: false
                 input "light${index}PanelLevelCommand", 'capability.switchLevel', title: 'Panel slider command device', multiple: false, required: false
+                input "light${index}LevelTextObject", 'text', title: 'Panel level label object id', required: false
                 input "light${index}LevelTextDevice", 'capability.notification', title: 'Panel level text device (optional)', multiple: false, required: false
                 input "light${index}Target", 'capability.switchLevel', title: 'Hubitat light/dimmer to control', multiple: false, required: false
             }
@@ -88,6 +96,9 @@ void initialize() {
     if (settingEnabled(settingValue('manageLightingControls'), true)) {
         lightMappings().each { Map mapping -> managedLightingControl(mapping) }
     }
+    if (settingEnabled(settingValue('manageTextLabels'), true)) {
+        lightMappings().each { Map mapping -> managedLevelTextDevice(mapping, true) }
+    }
     if (settingEnabled(settingValue('manageUfhVirtualSwitch'), true)) {
         managedTimerSwitch()
     }
@@ -135,7 +146,7 @@ void lightPanelSwitchHandler(evt) {
             return
         }
         recordPendingTargetSwitch(mapping, switchValue)
-        mirrorRequestedSwitch(mapping, switchValue)
+        syncLightingControl(mapping, switchValue, currentTargetLevel(mapping))
         commandSwitch(mapping.target, switchValue)
     }
 }
@@ -145,7 +156,7 @@ void lightPanelLevelEventHandler(evt) {
     if (mapping) {
         int level = normalizeLevelValue(evt.value, 100)
         recordPendingTargetLevel(mapping, level)
-        mirrorRequestedLevel(mapping, level)
+        syncLightingControl(mapping, 'on', level)
         commandLevel(mapping.target, level)
     }
 }
@@ -179,7 +190,9 @@ void lightTargetSwitchHandler(evt) {
         return
     }
     commandPanelSwitch(mapping, switchValue)
-    syncLightingControl(mapping, switchValue, mapping.target?.currentLevel ?: 100)
+    int level = currentTargetLevel(mapping)
+    sendLightLevelText(mapping, level)
+    syncLightingControl(mapping, switchValue, level)
 }
 
 void lightTargetLevelHandler(evt) {
@@ -191,7 +204,7 @@ void lightTargetLevelHandler(evt) {
         return
     }
     commandLevelOnly(mapping.panelLevelCommand, level)
-    sendTextCommand(mapping.levelTextDevice, "${level}")
+    sendLightLevelText(mapping, level)
     syncLightingControl(mapping, mapping.target?.currentSwitch ?: 'on', level)
 }
 
@@ -262,6 +275,7 @@ List<Map> lightMappings() {
             panelSwitch: settingValue("light${index}PanelSwitch"),
             panelLevelEvent: settingValue("light${index}PanelLevelEvent"),
             panelLevelCommand: settingValue("light${index}PanelLevelCommand"),
+            levelTextObject: settingValue("light${index}LevelTextObject") ?: defaultLevelTextObject(index),
             levelTextDevice: settingValue("light${index}LevelTextDevice"),
             target: settingValue("light${index}Target")
         ]
@@ -272,14 +286,25 @@ List<Map> lightMappings() {
 
 Object settingValue(String name) {
     def value = settings[name]
-    if (value != null) {
+    if (hasSettingValue(value)) {
         return value
+    }
+    try {
+        value = this."${name}"
+        if (hasSettingValue(value)) {
+            return value
+        }
+    } catch (MissingPropertyException ignored) {
     }
     try {
         return parent?.legacySetting(name)
     } catch (MissingMethodException ignored) {
         return null
     }
+}
+
+boolean hasSettingValue(Object value) {
+    value != null && (!(value instanceof CharSequence) || "${value}".trim())
 }
 
 Map lightMappingForDevice(Object deviceId, String key) {
@@ -297,13 +322,15 @@ boolean sameDevice(device, Object deviceId) {
 void mirrorRequestedLevel(Map mapping, int level) {
     int bounded = Math.max(1, Math.min(100, level))
     commandLevelOnly(mapping.panelLevelCommand, bounded)
-    sendTextCommand(mapping.levelTextDevice, "${bounded}")
+    sendLightLevelText(mapping, bounded)
     syncLightingControl(mapping, 'on', bounded)
 }
 
 void mirrorRequestedSwitch(Map mapping, String switchValue) {
     commandPanelSwitch(mapping, switchValue)
-    syncLightingControl(mapping, switchValue, mapping.target?.currentLevel ?: 100)
+    int level = currentTargetLevel(mapping)
+    sendLightLevelText(mapping, level)
+    syncLightingControl(mapping, switchValue, level)
 }
 
 void commandPanelSwitch(Map mapping, String switchValue) {
@@ -402,6 +429,47 @@ def activeLightingControl(Map mapping) {
     settingEnabled(settingValue('manageLightingControls'), true) ? managedLightingControl(mapping) : null
 }
 
+def activeLevelTextDevice(Map mapping) {
+    mapping.levelTextDevice ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedLevelTextDevice(mapping, false) : null)
+}
+
+def managedLevelTextDevice(Map mapping, boolean configure = false) {
+    if (!mapping.levelTextObject) return null
+    String plate = settingValue('plateName') ?: 'panel'
+    String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
+    String dni = "openhasp-${plate}-light-${mapping.index}-level-label"
+    String label = "${labelBase} ${mapping.name} Level Label"
+    def child = getChildDevice(dni)
+    boolean created = false
+    if (!child) {
+        child = addChildDevice('nichuk', 'OpenHASP Text Label', dni, [
+            name: label,
+            label: label,
+            isComponent: false
+        ])
+        created = true
+    } else if (child.displayName != label) {
+        try {
+            child.setLabel(label)
+        } catch (Exception ignored) {
+        }
+    }
+    if (configure || created) {
+        try {
+            child.configureFromApp(
+                "${settingValue('mqttBrokerUri') ?: ''}",
+                "${settingValue('mqttUsername') ?: ''}",
+                "${settingValue('mqttPassword') ?: ''}",
+                "hasp/${plate}/command/${mapping.levelTextObject}.text",
+                settingEnabled(settingValue('mqttRetainTextLabels'), false)
+            )
+        } catch (Exception e) {
+            log.warn "Could not configure ${label}: ${e.message}"
+        }
+    }
+    child
+}
+
 def managedLightingControl(Map mapping) {
     String plate = settingValue('plateName') ?: 'panel'
     String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
@@ -430,6 +498,22 @@ void syncLightingControl(Map mapping, Object switchValue, Object levelValue) {
     int normalizedLevel = Math.max(1, Math.min(100, safeInt(levelValue, 100)))
     child.sendEvent(name: 'switch', value: normalizedSwitch, isStateChange: false)
     child.sendEvent(name: 'level', value: normalizedLevel, unit: '%', isStateChange: false)
+}
+
+void sendLightLevelText(Map mapping, int level) {
+    sendTextCommand(activeLevelTextDevice(mapping), "${Math.max(1, Math.min(100, level))}")
+}
+
+int currentTargetLevel(Map mapping) {
+    Math.max(1, Math.min(100, safeInt(mapping.target?.currentLevel, 100)))
+}
+
+String defaultLevelTextObject(Integer index) {
+    Map defaults = [
+        1: 'p1b44',
+        2: 'p1b54'
+    ]
+    defaults[index]
 }
 
 def activeTimerTarget() {

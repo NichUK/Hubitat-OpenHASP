@@ -49,6 +49,8 @@ For dimmers, OpenHASP publishes slider events as JSON such as `{"event":"changed
 
 On Hubitat 2.5.0.159, MQTT Import does not support arbitrary string command capabilities such as `Notification`. The manager app can use text-command devices if another driver exposes them, but MQTT Import alone cannot currently update OpenHASP label text for a live countdown.
 
+To update level labels from Hubitat, enable `Create OpenHASP MQTT text label devices` in the panel app and enter the broker URI, username, and password. The app will create `OpenHASP Text Label` child devices for rows that have a level label object id, then publish the target device's current level to topics such as `hasp/bathroom_panel/command/p1b44.text` and `hasp/bathroom_panel/command/p1b54.text`.
+
 ## 3. Install the Hubitat Package
 
 Install via Hubitat Package Manager using:
@@ -77,6 +79,7 @@ Lighting mapping 1:
 - Panel switch event/command device: `Bathroom Panel Office Main Switch`
 - Panel slider event device: `Bathroom Panel Office Main Dimmer Event`
 - Panel slider command device: `Bathroom Panel Office Main Dimmer Command`
+- Panel level label object id: `p1b44`
 - Hubitat light/dimmer to control: `Office Main`
 
 Lighting mapping 2:
@@ -85,6 +88,7 @@ Lighting mapping 2:
 - Panel switch event/command device: `Bathroom Panel Bedroom Main Switch`
 - Panel slider event device: `Bathroom Panel Bedroom Main Dimmer Event`
 - Panel slider command device: `Bathroom Panel Bedroom Main Dimmer Command`
+- Panel level label object id: `p1b54`
 - Hubitat light/dimmer to control: `Bedroom Main`
 
 Timer mapping:

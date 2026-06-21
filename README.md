@@ -9,6 +9,7 @@ This package uses Hubitat's built-in MQTT Import Integration as the only MQTT co
 - `OpenHASP Manager` is the parent app where panels are added.
 - `OpenHASP Panel` child apps subscribe to imported devices, mirror real device state back to the panel, and run timers.
 - Optional app-created virtual controls provide Hubitat/dashboard devices that command the real devices and stay mirrored with the panel.
+- Optional app-created text label devices publish current level labels such as `p1b44.text` and `p1b54.text`.
 
 The MCP server used during development is not part of the runtime. Once installed, this package runs entirely on the Hubitat hub and the MQTT broker.
 
@@ -62,7 +63,7 @@ Use the app-created controls, the real target devices, or the physical OpenHASP 
 
 For dimmers, use separate MQTT Import devices for the raw OpenHASP slider event and the slider command endpoint. The command endpoint is output-only from the app's point of view, which prevents old dimmer reports from being fed back into the target control path. For switches, the app suppresses command echoes when one MQTT Import switch device is used for both state and command.
 
-On Hubitat 2.5.0.159, MQTT Import does not expose an arbitrary string command capability. Switch and dimmer control can run through MQTT Import alone, but OpenHASP text labels such as the live timer countdown need either a future MQTT Import string command capability or an optional OpenHASP-specific MQTT driver.
+On Hubitat 2.5.0.159, MQTT Import does not expose an arbitrary string command capability. Switch and dimmer control can run through MQTT Import alone. For OpenHASP text labels, enable `Create OpenHASP MQTT text label devices`; the package uses the included `OpenHASP Text Label` driver to publish string values from Hubitat to the label command topics.
 
 See [Configuration](docs/configuration.md) for the full walkthrough.
 
