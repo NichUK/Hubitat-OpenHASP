@@ -129,7 +129,14 @@ void subscribeTargets() {
 void lightPanelSwitchHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'panelSwitch')
     if (mapping) {
-        commandSwitch(mapping.target, normalizeSwitchValue(evt.value))
+        String switchValue = normalizeSwitchValue(evt.value)
+        if (suppressPanelSwitchEcho(mapping, switchValue)) {
+            if (debugLogging) log.debug "Ignoring mirrored ${mapping.name} panel switch ${switchValue}"
+            return
+        }
+        recordPendingTargetSwitch(mapping, switchValue)
+        mirrorRequestedSwitch(mapping, switchValue)
+        commandSwitch(mapping.target, switchValue)
     }
 }
 
@@ -145,7 +152,12 @@ void lightPanelLevelEventHandler(evt) {
 
 void lightControlSwitchHandler(evt) {
     Map mapping = lightMappingForControl(evt.deviceId)
-    if (mapping) commandSwitch(mapping.target, evt.value)
+    if (mapping) {
+        String switchValue = normalizeSwitchValue(evt.value)
+        recordPendingTargetSwitch(mapping, switchValue)
+        mirrorRequestedSwitch(mapping, switchValue)
+        commandSwitch(mapping.target, switchValue)
+    }
 }
 
 void lightControlLevelHandler(evt) {
@@ -161,8 +173,13 @@ void lightControlLevelHandler(evt) {
 void lightTargetSwitchHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'target')
     if (!mapping) return
-    commandSwitch(mapping.panelSwitch, evt.value)
-    syncLightingControl(mapping, evt.value, mapping.target?.currentLevel ?: 100)
+    String switchValue = normalizeSwitchValue(evt.value)
+    if (suppressStaleTargetSwitch(mapping, switchValue)) {
+        if (debugLogging) log.debug "Ignoring stale ${mapping.name} switch report ${switchValue}; waiting for pending switch"
+        return
+    }
+    commandPanelSwitch(mapping, switchValue)
+    syncLightingControl(mapping, switchValue, mapping.target?.currentLevel ?: 100)
 }
 
 void lightTargetLevelHandler(evt) {
@@ -282,6 +299,74 @@ void mirrorRequestedLevel(Map mapping, int level) {
     commandLevelOnly(mapping.panelLevelCommand, bounded)
     sendTextCommand(mapping.levelTextDevice, "${bounded}")
     syncLightingControl(mapping, 'on', bounded)
+}
+
+void mirrorRequestedSwitch(Map mapping, String switchValue) {
+    commandPanelSwitch(mapping, switchValue)
+    syncLightingControl(mapping, switchValue, mapping.target?.currentLevel ?: 100)
+}
+
+void commandPanelSwitch(Map mapping, String switchValue) {
+    if (!mapping.panelSwitch) return
+    recordPanelSwitchEcho(mapping, switchValue)
+    commandSwitch(mapping.panelSwitch, switchValue)
+}
+
+void recordPendingTargetSwitch(Map mapping, String switchValue) {
+    Map pending = (state.pendingTargetSwitches ?: [:]) as Map
+    pending["${mapping.index}"] = [
+        value: normalizeSwitchValue(switchValue),
+        until: now() + 8000L
+    ]
+    state.pendingTargetSwitches = pending
+}
+
+boolean suppressStaleTargetSwitch(Map mapping, String reportedValue) {
+    Map pending = (state.pendingTargetSwitches ?: [:]) as Map
+    Map entry = pending["${mapping.index}"] as Map
+    if (!entry) {
+        return false
+    }
+    if (now() > safeLong(entry.until, 0L)) {
+        pending.remove("${mapping.index}")
+        state.pendingTargetSwitches = pending
+        return false
+    }
+    String desiredValue = normalizeSwitchValue(entry.value)
+    if (normalizeSwitchValue(reportedValue) == desiredValue) {
+        pending.remove("${mapping.index}")
+        state.pendingTargetSwitches = pending
+        return false
+    }
+    true
+}
+
+void recordPanelSwitchEcho(Map mapping, String switchValue) {
+    Map pending = (state.pendingPanelSwitchEchoes ?: [:]) as Map
+    pending["${mapping.index}"] = [
+        value: normalizeSwitchValue(switchValue),
+        until: now() + 3000L
+    ]
+    state.pendingPanelSwitchEchoes = pending
+}
+
+boolean suppressPanelSwitchEcho(Map mapping, String reportedValue) {
+    Map pending = (state.pendingPanelSwitchEchoes ?: [:]) as Map
+    Map entry = pending["${mapping.index}"] as Map
+    if (!entry) {
+        return false
+    }
+    if (now() > safeLong(entry.until, 0L)) {
+        pending.remove("${mapping.index}")
+        state.pendingPanelSwitchEchoes = pending
+        return false
+    }
+    if (normalizeSwitchValue(reportedValue) == normalizeSwitchValue(entry.value)) {
+        pending.remove("${mapping.index}")
+        state.pendingPanelSwitchEchoes = pending
+        return true
+    }
+    false
 }
 
 void recordPendingTargetLevel(Map mapping, int level) {

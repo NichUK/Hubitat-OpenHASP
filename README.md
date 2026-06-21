@@ -60,7 +60,7 @@ The app can create virtual lighting controls and the safe UFH virtual switch whe
 
 Use the app-created controls, the real target devices, or the physical OpenHASP panel for day-to-day control. The MQTT Import panel devices are best treated as transport devices for the OpenHASP controls; commanding them directly may update the panel without producing a panel-originated state event.
 
-For dimmers, use separate MQTT Import devices for the raw OpenHASP slider event and the slider command endpoint. The command endpoint is output-only from the app's point of view, which prevents old dimmer reports from being fed back into the target control path.
+For dimmers, use separate MQTT Import devices for the raw OpenHASP slider event and the slider command endpoint. The command endpoint is output-only from the app's point of view, which prevents old dimmer reports from being fed back into the target control path. For switches, the app suppresses command echoes when one MQTT Import switch device is used for both state and command.
 
 On Hubitat 2.5.0.159, MQTT Import does not expose an arbitrary string command capability. Switch and dimmer control can run through MQTT Import alone, but OpenHASP text labels such as the live timer countdown need either a future MQTT Import string command capability or an optional OpenHASP-specific MQTT driver.
 

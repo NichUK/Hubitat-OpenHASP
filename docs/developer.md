@@ -8,6 +8,8 @@ OpenHASP publishes object events as JSON payloads. MQTT Import's manual mapper m
 
 Dimmer updates have three possible sources: the OpenHASP raw event device, the app-created Hubitat control, and the real target device. When a user requests a new level from the panel or app-created control, `OpenHASP Panel` records that level briefly and mirrors it immediately to the panel command device and virtual control. During that short pending window, older target level reports are ignored so the panel slider cannot bounce back to the previous level before the real device finishes reporting the new one.
 
+Switch updates use the same pending-target model. Because a single MQTT Import switch can be both the OpenHASP state event device and the command endpoint, mirrored commands to the panel switch are marked as expected echoes and ignored if they return through the subscription path.
+
 ```mermaid
 flowchart LR
     OpenHASP["OpenHASP plate"] -->|"MQTT state events"| Broker["MQTT broker"]
