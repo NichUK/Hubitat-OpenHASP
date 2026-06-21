@@ -287,11 +287,9 @@ void commandTargetFromRow(Map row, String switchValue, int level, String source)
         recordPending(row, 'level', level, source)
         target.setLevel(Math.max(1, Math.min(100, level)))
         target.on()
-        if (plate) syncControl(plate, row, 'on', level)
     } else {
         recordPending(row, 'switch', switchValue, source)
         commandSwitch(target, switchValue)
-        if (plate) syncControl(plate, row, switchValue, currentTargetLevel(row))
     }
 }
 
@@ -404,6 +402,7 @@ Map plateForRow(Map row) {
 void syncControl(Map plate, Map row, Object switchValue, Object levelValue) {
     def control = managedControl(plate, row)
     if (control) {
+        recordPendingControl(control, '*', '*')
         String normalizedSwitch = normalizeSwitchValue(switchValue)
         recordPendingControl(control, 'switch', normalizedSwitch)
         control.sendEvent(name: 'switch', value: normalizedSwitch, isStateChange: false)
@@ -716,6 +715,13 @@ void recordPendingControl(device, String kind, Object value) {
 
 boolean suppressPendingControl(evt, String kind) {
     Map pending = (state.pendingControls ?: [:]) as Map
+    String anyKey = "${evt.deviceId}:*"
+    Map anyEntry = pending[anyKey] as Map
+    if (anyEntry) {
+        if (now() <= safeLong(anyEntry.until, 0L)) return true
+        pending.remove(anyKey)
+        state.pendingControls = pending
+    }
     String key = "${evt.deviceId}:${kind}"
     Map entry = pending[key] as Map
     if (!entry) return false
