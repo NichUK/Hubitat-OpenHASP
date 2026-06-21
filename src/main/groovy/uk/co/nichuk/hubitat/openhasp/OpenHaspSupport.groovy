@@ -48,7 +48,7 @@ class OpenHaspSupport {
     }
 
     static String switchText(Object value) {
-        truthy(value) ? 'ON' : 'OFF'
+        normalizeSwitchValue(value) == 'on' ? 'ON' : 'OFF'
     }
 
     static boolean truthy(Object value) {
@@ -60,6 +60,40 @@ class OpenHaspSupport {
         }
         String text = "${value}".trim().toLowerCase()
         text in ['1', 'true', 'on', 'yes']
+    }
+
+    static String normalizeSwitchValue(Object value) {
+        Object normalized = openHaspPayloadValue(value)
+        if (normalized instanceof Boolean) {
+            return normalized ? 'on' : 'off'
+        }
+        if (normalized instanceof Number) {
+            return normalized != 0 ? 'on' : 'off'
+        }
+        String text = "${normalized}".trim().toLowerCase()
+        text in ['1', 'true', 'on', 'yes'] ? 'on' : 'off'
+    }
+
+    static int normalizeLevelValue(Object value, int fallback = 100) {
+        safeInt(openHaspPayloadValue(value), fallback)
+    }
+
+    static Object openHaspPayloadValue(Object value) {
+        if (value == null || !(value instanceof CharSequence)) {
+            return value
+        }
+        String text = value.toString().trim()
+        if (!text.startsWith('{')) {
+            return value
+        }
+        try {
+            def parsed = new JsonSlurper().parseText(text)
+            if (parsed instanceof Map && parsed.containsKey('val')) {
+                return parsed.val
+            }
+        } catch (ignored) {
+        }
+        value
     }
 
     static long addTimerSeconds(Long nowEpochSeconds, Long currentDeadlineEpochSeconds, int incrementSeconds, int maxSeconds) {

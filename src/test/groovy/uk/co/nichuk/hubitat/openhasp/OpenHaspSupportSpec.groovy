@@ -14,6 +14,35 @@ class OpenHaspSupportSpec extends Specification {
     }
 
     @Unroll
+    def 'normalizes MQTT Import switch payload #payload to #switchValue'() {
+        expect:
+        OpenHaspSupport.normalizeSwitchValue(payload) == switchValue
+
+        where:
+        payload                         || switchValue
+        'on'                            || 'on'
+        'off'                           || 'off'
+        1                               || 'on'
+        0                               || 'off'
+        '{"event":"up","val":1}'        || 'on'
+        '{"event": "up", "val": 0}'     || 'off'
+        '{"event":"changed","val":true}' || 'on'
+    }
+
+    @Unroll
+    def 'normalizes MQTT Import level payload #payload to #level'() {
+        expect:
+        OpenHaspSupport.normalizeLevelValue(payload, 100) == level
+
+        where:
+        payload                        || level
+        37                             || 37
+        '38'                           || 38
+        '{"event":"changed","val":42}' || 42
+        '{"event": "up", "val": 7}'    || 7
+    }
+
+    @Unroll
     def 'converts Hubitat level #level to Zigbee2MQTT brightness #brightness'() {
         expect:
         OpenHaspSupport.levelToBrightness(level) == brightness

@@ -4,11 +4,13 @@
  * Licensed under the Apache License, Version 2.0.
  */
 
+import groovy.json.JsonSlurper
+
 definition(
     name: 'OpenHASP Manager',
     namespace: 'nichuk',
     author: 'NichUK',
-    description: 'Binds reusable OpenHASP panel child devices to Hubitat devices.',
+    description: 'Binds Hubitat MQTT Import OpenHASP devices to ordinary Hubitat devices.',
     category: 'Convenience',
     importUrl: 'https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-manager.groovy',
     iconUrl: '',
@@ -19,34 +21,32 @@ definition(
 preferences {
     page(name: 'mainPage', title: 'OpenHASP Manager', install: true, uninstall: true) {
         section('Panel') {
-            input 'managePanelChild', 'bool', title: 'Create and manage the OpenHASP Panel child device', defaultValue: true, required: true
-            input 'panelDevice', 'capability.refresh', title: 'Existing OpenHASP Panel device (optional)', multiple: false, required: false
-            input 'mqttHost', 'text', title: 'MQTT broker host', required: true
-            input 'mqttPort', 'number', title: 'MQTT broker port', defaultValue: 1883, required: true
-            input 'mqttUsername', 'text', title: 'MQTT username', required: false
-            input 'mqttPassword', 'password', title: 'MQTT password', required: false
+            paragraph 'Use Hubitat MQTT Import Integration to map OpenHASP MQTT topics as Hubitat devices, then select those devices here.'
             input 'plateName', 'text', title: 'OpenHASP plate name', defaultValue: 'bathroom_panel', required: true
-            input 'idleSeconds', 'number', title: 'Screen-off idle seconds', defaultValue: 60, required: true
             input 'timerIncrementMinutes', 'number', title: 'UFH timer increment minutes', defaultValue: 1, required: true
             input 'timerMaxMinutes', 'number', title: 'UFH timer maximum minutes', defaultValue: 3, required: true
         }
         section('Office lighting circuit') {
+            input 'officePanelSwitch', 'capability.switch', title: 'MQTT Import panel switch', multiple: false, required: false
+            input 'officePanelDimmerEvent', 'capability.switch', title: 'MQTT Import panel dimmer event device (raw JSON, optional)', multiple: false, required: false
+            input 'officePanelDimmer', 'capability.switchLevel', title: 'MQTT Import panel dimmer command device', multiple: false, required: false
+            input 'officeLevelTextDevice', 'capability.notification', title: 'MQTT Import panel level text device (optional)', multiple: false, required: false
             input 'officeTarget', 'capability.switchLevel', title: 'Hubitat target dimmer', multiple: false, required: false
-            input 'officeSwitchObjectId', 'text', title: 'OpenHASP switch object id', defaultValue: 'p1b42', required: false
-            input 'officeDimmerObjectId', 'text', title: 'OpenHASP dimmer object id', defaultValue: 'p1b43', required: false
-            input 'officeLevelLabelObjectId', 'text', title: 'OpenHASP level label object id', defaultValue: 'p1b44', required: false
         }
         section('Bedroom lighting circuit') {
+            input 'bedroomPanelSwitch', 'capability.switch', title: 'MQTT Import panel switch', multiple: false, required: false
+            input 'bedroomPanelDimmerEvent', 'capability.switch', title: 'MQTT Import panel dimmer event device (raw JSON, optional)', multiple: false, required: false
+            input 'bedroomPanelDimmer', 'capability.switchLevel', title: 'MQTT Import panel dimmer command device', multiple: false, required: false
+            input 'bedroomLevelTextDevice', 'capability.notification', title: 'MQTT Import panel level text device (optional)', multiple: false, required: false
             input 'bedroomTarget', 'capability.switchLevel', title: 'Hubitat target dimmer', multiple: false, required: false
-            input 'bedroomSwitchObjectId', 'text', title: 'OpenHASP switch object id', defaultValue: 'p1b52', required: false
-            input 'bedroomDimmerObjectId', 'text', title: 'OpenHASP dimmer object id', defaultValue: 'p1b53', required: false
-            input 'bedroomLevelLabelObjectId', 'text', title: 'OpenHASP level label object id', defaultValue: 'p1b54', required: false
         }
         section('Underfloor heating timer') {
+            input 'ufhPanelButton', 'capability.pushableButton', title: 'MQTT Import panel timer button (preferred)', multiple: false, required: false
+            input 'ufhPanelSwitch', 'capability.switch', title: 'MQTT Import panel timer switch fallback', multiple: false, required: false
+            input 'ufhTimerTextDevice', 'capability.notification', title: 'MQTT Import timer button text device (optional)', multiple: false, required: false
+            input 'ufhStateTextDevice', 'capability.notification', title: 'MQTT Import UFH state text device (optional)', multiple: false, required: false
             input 'manageUfhVirtualSwitch', 'bool', title: 'Create and use a safe virtual UFH switch', defaultValue: true, required: true
             input 'ufhTargetSwitch', 'capability.switch', title: 'Existing Hubitat UFH target switch (optional)', multiple: false, required: false
-            input 'ufhTimerObjectId', 'text', title: 'OpenHASP timer button object id', defaultValue: 'p1b21', required: false
-            input 'ufhStateLabelObjectId', 'text', title: 'OpenHASP state label object id', defaultValue: 'p1b13', required: false
         }
         section('Options') {
             input 'debugLogging', 'bool', title: 'Enable debug logging', defaultValue: false
@@ -60,44 +60,29 @@ void installed() {
 
 void updated() {
     unsubscribe()
+    unschedule()
     initialize()
 }
 
 void initialize() {
-    configureManagedDevices()
-    subscribeTargets()
-    syncAllTargetsToPanel()
-}
-
-void configureManagedDevices() {
-    def panel = activePanelDevice()
-    if (panel) {
-        panel.configureFromManager(
-            mqttHost ?: '',
-            mqttPort ?: 1883,
-            mqttUsername ?: '',
-            mqttPassword ?: '',
-            plateName ?: 'bathroom_panel',
-            idleSeconds ?: 60,
-            timerIncrementMinutes ?: 1,
-            timerMaxMinutes ?: 3,
-            "${debugLogging ?: false}"
-        )
-        panel.clearManagedControls()
-        managerControls().each { String controlId, Map control ->
-            panel.configureManagedControl(
-                controlId,
-                control.kind as String,
-                control.name as String,
-                control.role as String,
-                control.labelObject as String
-            )
-        }
-        panel.applyManagedConfiguration()
-    }
     if (settings.manageUfhVirtualSwitch != false) {
         managedUfhSwitch()
     }
+    subscribePanelControls()
+    subscribeTargets()
+    syncAllTargetsToPanel()
+    updateTimerOutputs()
+}
+
+void subscribePanelControls() {
+    if (officePanelSwitch) subscribe(officePanelSwitch, 'switch', officePanelSwitchHandler)
+    if (officePanelDimmerEvent) subscribe(officePanelDimmerEvent, 'switch', officePanelDimmerEventHandler)
+    if (officePanelDimmer) subscribe(officePanelDimmer, 'level', officePanelLevelHandler)
+    if (bedroomPanelSwitch) subscribe(bedroomPanelSwitch, 'switch', bedroomPanelSwitchHandler)
+    if (bedroomPanelDimmerEvent) subscribe(bedroomPanelDimmerEvent, 'switch', bedroomPanelDimmerEventHandler)
+    if (bedroomPanelDimmer) subscribe(bedroomPanelDimmer, 'level', bedroomPanelLevelHandler)
+    if (ufhPanelButton) subscribe(ufhPanelButton, 'pushed', ufhPanelButtonHandler)
+    if (ufhPanelSwitch) subscribe(ufhPanelSwitch, 'switch', ufhPanelSwitchHandler)
 }
 
 void subscribeTargets() {
@@ -109,47 +94,64 @@ void subscribeTargets() {
         subscribe(bedroomTarget, 'switch', bedroomTargetSwitchHandler)
         subscribe(bedroomTarget, 'level', bedroomTargetLevelHandler)
     }
-    if (ufhTargetSwitch) {
-        subscribe(ufhTargetSwitch, 'switch', ufhTargetSwitchHandler)
+    def ufh = activeUfhTarget()
+    if (ufh) {
+        subscribe(ufh, 'switch', ufhTargetSwitchHandler)
     }
 }
 
-void handleOpenHaspControlEvent(panel, String controlId, String kind, Object value) {
-    if (debugLogging) log.debug "Panel ${panel?.displayName} control ${controlId} ${kind} ${value}"
-    if (controlId == (officeSwitchObjectId ?: 'p1b42')) {
-        commandSwitch(officeTarget, "${value}")
-    } else if (controlId == (officeDimmerObjectId ?: 'p1b43')) {
-        commandLevel(officeTarget, value)
-    } else if (controlId == (bedroomSwitchObjectId ?: 'p1b52')) {
-        commandSwitch(bedroomTarget, "${value}")
-    } else if (controlId == (bedroomDimmerObjectId ?: 'p1b53')) {
-        commandLevel(bedroomTarget, value)
-    } else if (controlId == (ufhTimerObjectId ?: 'p1b21')) {
-        commandSwitch(activeUfhTarget(), "${value}")
-        activePanelDevice()?.publishObjectText(ufhStateLabelObjectId ?: 'p1b13', "${value}" == 'on' ? 'ON' : 'OFF')
-    }
+void officePanelSwitchHandler(evt) {
+    commandSwitch(officeTarget, normalizeSwitchValue(evt.value))
+}
+
+void officePanelLevelHandler(evt) {
+    commandLevel(officeTarget, normalizeLevelValue(evt.value, 100))
+}
+
+void officePanelDimmerEventHandler(evt) {
+    commandLevel(officeTarget, normalizeLevelValue(evt.value, 100))
+}
+
+void bedroomPanelSwitchHandler(evt) {
+    commandSwitch(bedroomTarget, normalizeSwitchValue(evt.value))
+}
+
+void bedroomPanelLevelHandler(evt) {
+    commandLevel(bedroomTarget, normalizeLevelValue(evt.value, 100))
+}
+
+void bedroomPanelDimmerEventHandler(evt) {
+    commandLevel(bedroomTarget, normalizeLevelValue(evt.value, 100))
+}
+
+void ufhPanelButtonHandler(evt) {
+    addUfhTimerIncrement()
+}
+
+void ufhPanelSwitchHandler(evt) {
+    addUfhTimerIncrement()
 }
 
 void officeTargetSwitchHandler(evt) {
-    activePanelDevice()?.publishObjectValue(officeSwitchObjectId ?: 'p1b42', evt.value == 'on' ? '1' : '0')
+    commandSwitch(officePanelSwitch, evt.value)
 }
 
 void officeTargetLevelHandler(evt) {
-    activePanelDevice()?.publishObjectValue(officeDimmerObjectId ?: 'p1b43', "${evt.value}")
-    activePanelDevice()?.publishObjectText(officeLevelLabelObjectId ?: 'p1b44', "${evt.value}")
+    commandLevelOnly(officePanelDimmer, evt.value)
+    sendTextCommand(officeLevelTextDevice, "${safeInt(evt.value, 0)}")
 }
 
 void bedroomTargetSwitchHandler(evt) {
-    activePanelDevice()?.publishObjectValue(bedroomSwitchObjectId ?: 'p1b52', evt.value == 'on' ? '1' : '0')
+    commandSwitch(bedroomPanelSwitch, evt.value)
 }
 
 void bedroomTargetLevelHandler(evt) {
-    activePanelDevice()?.publishObjectValue(bedroomDimmerObjectId ?: 'p1b53', "${evt.value}")
-    activePanelDevice()?.publishObjectText(bedroomLevelLabelObjectId ?: 'p1b54', "${evt.value}")
+    commandLevelOnly(bedroomPanelDimmer, evt.value)
+    sendTextCommand(bedroomLevelTextDevice, "${safeInt(evt.value, 0)}")
 }
 
 void ufhTargetSwitchHandler(evt) {
-    activePanelDevice()?.publishObjectText(ufhStateLabelObjectId ?: 'p1b13', evt.value == 'on' ? 'ON' : 'OFF')
+    sendTextCommand(ufhStateTextDevice, evt.value == 'on' ? 'ON' : 'OFF')
 }
 
 void syncAllTargetsToPanel() {
@@ -167,37 +169,83 @@ void syncAllTargetsToPanel() {
     }
 }
 
-void commandSwitch(device, String value) {
+void addUfhTimerIncrement() {
+    long nowSeconds = epochSeconds()
+    int incrementSeconds = Math.max(1, safeInt(timerIncrementMinutes, 1)) * 60
+    int maxSeconds = Math.max(incrementSeconds, safeInt(timerMaxMinutes, 3) * 60)
+    state.ufhTimerDeadlineEpochSeconds = addTimerSeconds(nowSeconds, state.ufhTimerDeadlineEpochSeconds as Long, incrementSeconds, maxSeconds)
+    commandSwitch(activeUfhTarget(), 'on')
+    updateTimerOutputs()
+    runIn(1, 'timerTick')
+}
+
+void timerTick() {
+    long remaining = remainingTimerSeconds()
+    if (remaining <= 0) {
+        state.remove('ufhTimerDeadlineEpochSeconds')
+        commandSwitch(activeUfhTarget(), 'off')
+        updateTimerOutputs()
+        return
+    }
+    updateTimerOutputs()
+    runIn(1, 'timerTick')
+}
+
+void updateTimerOutputs() {
+    long remaining = remainingTimerSeconds()
+    int incrementSeconds = Math.max(1, safeInt(timerIncrementMinutes, 1)) * 60
+    sendTextCommand(ufhTimerTextDevice, timerButtonText(remaining, incrementSeconds))
+    def ufh = activeUfhTarget()
+    String stateText = remaining > 0 || ufh?.currentSwitch == 'on' ? 'ON' : 'OFF'
+    sendTextCommand(ufhStateTextDevice, stateText)
+}
+
+long remainingTimerSeconds() {
+    remainingSeconds(epochSeconds(), state.ufhTimerDeadlineEpochSeconds as Long)
+}
+
+void commandSwitch(device, Object value) {
     if (!device) return
-    if (debugLogging) log.debug "Commanding ${device.displayName} ${value}"
-    value == 'on' ? device.on() : device.off()
+    String normalized = normalizeSwitchValue(value)
+    if (debugLogging) log.debug "Commanding ${device.displayName} switch ${normalized}"
+    normalized == 'on' ? device.on() : device.off()
 }
 
 void commandLevel(device, Object level) {
     if (!device) return
-    int bounded = Math.max(1, Math.min(100, "${level}".toBigDecimal().intValue()))
+    int bounded = Math.max(1, Math.min(100, safeInt(level, 100)))
     if (debugLogging) log.debug "Commanding ${device.displayName} level ${bounded}"
     device.setLevel(bounded)
     device.on()
 }
 
-def activePanelDevice() {
-    if (panelDevice) {
-        return panelDevice
+void commandLevelOnly(device, Object level) {
+    if (!device) return
+    int bounded = Math.max(1, Math.min(100, safeInt(level, 100)))
+    if (debugLogging) log.debug "Commanding ${device.displayName} level ${bounded}"
+    device.setLevel(bounded)
+}
+
+void sendTextCommand(device, String text) {
+    if (!device) return
+    if (debugLogging) log.debug "Commanding ${device.displayName} text ${text}"
+    try {
+        device.deviceNotification(text)
+        return
+    } catch (MissingMethodException ignored) {
+    } catch (Exception e) {
+        if (debugLogging) log.debug "deviceNotification failed for ${device.displayName}: ${e.message}"
     }
-    if (settings.managePanelChild == false) {
-        return null
+    try {
+        device.speak(text)
+        return
+    } catch (MissingMethodException ignored) {
+    } catch (Exception e) {
+        if (debugLogging) log.debug "speak failed for ${device.displayName}: ${e.message}"
     }
-    String dni = "openhasp-${plateName ?: 'bathroom_panel'}"
-    def child = getChildDevice(dni)
-    if (!child) {
-        child = addChildDevice('nichuk', 'OpenHASP Panel', dni, [
-            name: "OpenHASP ${plateName ?: 'bathroom_panel'}",
-            label: "OpenHASP ${plateName ?: 'bathroom_panel'}",
-            isComponent: false
-        ])
+    if (text == 'ON' || text == 'OFF') {
+        commandSwitch(device, text == 'ON' ? 'on' : 'off')
     }
-    return child
 }
 
 def activeUfhTarget() {
@@ -217,13 +265,73 @@ def managedUfhSwitch() {
     return child
 }
 
-Map managerControls() {
-    [
-        (ufhTimerObjectId ?: 'p1b21')       : [kind: 'button', name: 'Bathroom UFH Timer', role: 'timerButton', labelObject: ufhStateLabelObjectId ?: 'p1b13'],
-        p1b22                              : [kind: 'setpoint', name: 'Bathroom UFH Setpoint', role: 'setpoint', labelObject: 'p1b23'],
-        (officeSwitchObjectId ?: 'p1b42')  : [kind: 'switch', name: 'Bathroom Office Main Switch', role: 'officeSwitch'],
-        (officeDimmerObjectId ?: 'p1b43')  : [kind: 'dimmer', name: 'Bathroom Office Main Dimmer', role: 'officeDimmer', labelObject: officeLevelLabelObjectId ?: 'p1b44'],
-        (bedroomSwitchObjectId ?: 'p1b52') : [kind: 'switch', name: 'Bathroom Bedroom Main Switch', role: 'bedroomSwitch'],
-        (bedroomDimmerObjectId ?: 'p1b53') : [kind: 'dimmer', name: 'Bathroom Bedroom Main Dimmer', role: 'bedroomDimmer', labelObject: bedroomLevelLabelObjectId ?: 'p1b54']
-    ]
+long epochSeconds() {
+    Math.floor(now() / 1000D) as long
+}
+
+int safeInt(Object value, int fallback = 0) {
+    try {
+        return "${value}".toBigDecimal().intValue()
+    } catch (ignored) {
+        return fallback
+    }
+}
+
+String normalizeSwitchValue(Object value) {
+    Object normalized = openHaspPayloadValue(value)
+    if (normalized instanceof Boolean) {
+        return normalized ? 'on' : 'off'
+    }
+    if (normalized instanceof Number) {
+        return normalized != 0 ? 'on' : 'off'
+    }
+    String text = "${normalized}".trim().toLowerCase()
+    text in ['1', 'true', 'on', 'yes'] ? 'on' : 'off'
+}
+
+int normalizeLevelValue(Object value, int fallback = 100) {
+    safeInt(openHaspPayloadValue(value), fallback)
+}
+
+Object openHaspPayloadValue(Object value) {
+    if (value == null) {
+        return null
+    }
+    if (!(value instanceof CharSequence)) {
+        return value
+    }
+    String text = value.toString().trim()
+    if (!text.startsWith('{')) {
+        return value
+    }
+    try {
+        def parsed = new JsonSlurper().parseText(text)
+        if (parsed instanceof Map && parsed.containsKey('val')) {
+            return parsed.val
+        }
+    } catch (ignored) {
+    }
+    value
+}
+
+long addTimerSeconds(Long nowEpochSeconds, Long currentDeadlineEpochSeconds, int incrementSeconds, int maxSeconds) {
+    long remaining = remainingSeconds(nowEpochSeconds, currentDeadlineEpochSeconds)
+    long nextRemaining = Math.min(maxSeconds as long, remaining + incrementSeconds)
+    nowEpochSeconds + nextRemaining
+}
+
+long remainingSeconds(Long nowEpochSeconds, Long deadlineEpochSeconds) {
+    if (!deadlineEpochSeconds) {
+        return 0L
+    }
+    Math.max(0L, deadlineEpochSeconds - nowEpochSeconds)
+}
+
+String timerButtonText(long remainingSeconds, int incrementSeconds) {
+    if (remainingSeconds <= 0) {
+        return "Start ${Math.max(1, Math.round(incrementSeconds / 60D) as int)}m"
+    }
+    long minutes = Math.floor(remainingSeconds / 60D) as long
+    long seconds = remainingSeconds % 60
+    "${minutes}:${seconds.toString().padLeft(2, '0')}"
 }
