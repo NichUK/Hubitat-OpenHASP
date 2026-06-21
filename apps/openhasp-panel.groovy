@@ -60,6 +60,8 @@ def mainPage() {
             input 'manageUfhVirtualSwitch', 'bool', title: 'Create and use a safe virtual timer switch when no target is selected', defaultValue: true, required: true
             input 'timerIncrementMinutes', 'number', title: 'Timer increment minutes', defaultValue: 1, required: true
             input 'timerMaxMinutes', 'number', title: 'Timer maximum minutes', defaultValue: 3, required: true
+            input 'timerTextObject', 'text', title: 'Panel timer button text object id', defaultValue: 'p1b21', required: false
+            input 'timerStateTextObject', 'text', title: 'Panel timer state text object id', defaultValue: 'p1b13', required: false
             input 'timerTextDevice', 'capability.notification', title: 'Panel timer text device (optional)', multiple: false, required: false
             input 'timerStateTextDevice', 'capability.notification', title: 'Panel timer state text device (optional)', multiple: false, required: false
         }
@@ -98,6 +100,8 @@ void initialize() {
     }
     if (settingEnabled(settingValue('manageTextLabels'), true)) {
         lightMappings().each { Map mapping -> managedLevelTextDevice(mapping, true) }
+        managedTimerTextDevice('timer', true)
+        managedTimerTextDevice('state', true)
     }
     if (settingEnabled(settingValue('manageUfhVirtualSwitch'), true)) {
         managedTimerSwitch()
@@ -106,6 +110,9 @@ void initialize() {
     subscribeTargets()
     syncAllTargetsToPanel()
     updateTimerOutputs()
+    if (remainingTimerSeconds() > 0) {
+        runIn(1, 'timerTick')
+    }
 }
 
 void subscribePanelControls() {
@@ -229,7 +236,7 @@ void timerPanelSwitchHandler(evt) {
 }
 
 void timerTargetSwitchHandler(evt) {
-    sendTextCommand(settingValue('timerStateTextDevice'), evt.value == 'on' ? 'ON' : 'OFF')
+    sendTextCommand(activeTimerStateTextDevice(), evt.value == 'on' ? 'ON' : 'OFF')
 }
 
 void syncAllTargetsToPanel() {
@@ -269,10 +276,10 @@ void timerTick() {
 void updateTimerOutputs() {
     long remaining = remainingTimerSeconds()
     int incrementSeconds = Math.max(1, safeInt(settingValue('timerIncrementMinutes'), 1)) * 60
-    sendTextCommand(settingValue('timerTextDevice'), timerButtonText(remaining, incrementSeconds))
+    sendTextCommand(activeTimerTextDevice(), timerButtonText(remaining, incrementSeconds))
     def timer = activeTimerTarget()
     String stateText = remaining > 0 || timer?.currentSwitch == 'on' ? 'ON' : 'OFF'
-    sendTextCommand(settingValue('timerStateTextDevice'), stateText)
+    sendTextCommand(activeTimerStateTextDevice(), stateText)
 }
 
 long remainingTimerSeconds() {
@@ -490,6 +497,14 @@ def activeLevelTextDevice(Map mapping) {
     mapping.levelTextDevice ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedLevelTextDevice(mapping, false) : null)
 }
 
+def activeTimerTextDevice() {
+    settingValue('timerTextDevice') ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedTimerTextDevice('timer', false) : null)
+}
+
+def activeTimerStateTextDevice() {
+    settingValue('timerStateTextDevice') ?: (settingEnabled(settingValue('manageTextLabels'), true) ? managedTimerTextDevice('state', false) : null)
+}
+
 def managedLevelTextDevice(Map mapping, boolean configure = false) {
     if (!mapping.levelTextObject) return null
     String plate = settingValue('plateName') ?: 'panel'
@@ -572,6 +587,51 @@ String defaultLevelTextObject(Integer index) {
         2: 'p1b54'
     ]
     defaults[index]
+}
+
+def managedTimerTextDevice(String kind, boolean configure = false) {
+    String objectId = timerTextObjectId(kind)
+    if (!objectId) return null
+    String plate = settingValue('plateName') ?: 'panel'
+    String labelBase = settingValue('panelLabel') ?: plate ?: 'OpenHASP'
+    String suffix = kind == 'state' ? 'UFH State Label' : 'UFH Timer Label'
+    String dni = "openhasp-${plate}-timer-${kind}-label"
+    String label = "${labelBase} ${suffix}"
+    def child = getChildDevice(dni)
+    boolean created = false
+    if (!child) {
+        child = addChildDevice('nichuk', 'OpenHASP Text Label', dni, [
+            name: label,
+            label: label,
+            isComponent: false
+        ])
+        created = true
+    } else if (child.displayName != label) {
+        try {
+            child.setLabel(label)
+        } catch (Exception ignored) {
+        }
+    }
+    if (configure || created) {
+        try {
+            child.configureFromApp(
+                "${settingValue('mqttBrokerUri') ?: ''}",
+                "${settingValue('mqttUsername') ?: ''}",
+                "${settingValue('mqttPassword') ?: ''}",
+                "hasp/${plate}/command/${objectId}.text",
+                settingEnabled(settingValue('mqttRetainTextLabels'), false)
+            )
+        } catch (Exception e) {
+            log.warn "Could not configure ${label}: ${e.message}"
+        }
+    }
+    child
+}
+
+String timerTextObjectId(String kind) {
+    String settingName = kind == 'state' ? 'timerStateTextObject' : 'timerTextObject'
+    def value = settings[settingName]
+    hasSettingValue(value) ? "${value}" : (kind == 'state' ? 'p1b13' : 'p1b21')
 }
 
 def activeTimerTarget() {

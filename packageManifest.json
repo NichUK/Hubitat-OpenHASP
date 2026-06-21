@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Prevents managed-control echoes from being reprocessed as commands and stops panel-originated light changes from writing back to the same OpenHASP switch or slider when Hubitat confirms the state.",
+  "releaseNotes": "Adds managed OpenHASP text-label devices for the UFH timer button and ON/OFF state label so the Hubitat-native timer can update the panel display.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

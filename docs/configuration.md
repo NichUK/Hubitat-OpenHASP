@@ -49,7 +49,7 @@ For dimmers, OpenHASP publishes slider events as JSON such as `{"event":"changed
 
 On Hubitat 2.5.0.159, MQTT Import does not support arbitrary string command capabilities such as `Notification`. The manager app can use text-command devices if another driver exposes them, but MQTT Import alone cannot currently update OpenHASP label text for a live countdown.
 
-To update level labels from Hubitat, enable `Create OpenHASP MQTT text label devices` in the panel app and enter the broker URI, username, and password. The app will create `OpenHASP Text Label` child devices for rows that have a level label object id, then publish the target device's current level to topics such as `hasp/bathroom_panel/command/p1b44.text` and `hasp/bathroom_panel/command/p1b54.text`.
+To update labels from Hubitat, enable `Create OpenHASP MQTT text label devices` in the panel app and enter the broker URI, username, and password. The app will create `OpenHASP Text Label` child devices for rows that have a level label object id, then publish the target device's current level to topics such as `hasp/bathroom_panel/command/p1b44.text` and `hasp/bathroom_panel/command/p1b54.text`. It also creates timer label devices for `p1b21.text` and `p1b13.text` by default.
 
 ## 3. Install the Hubitat Package
 
@@ -97,7 +97,9 @@ Timer mapping:
 - Panel timer button or switch: the MQTT Import device mapped to `p1b21`
 - Hubitat switch to keep on while timer is active: blank until the real heating actuator is identified
 - Create and use a safe virtual timer switch: enabled for testing
-- Timer text/state devices: optional, only if supplied by a driver with an arbitrary text command
+- Timer button text object id: `p1b21`
+- Timer state text object id: `p1b13`
+- Timer text/state devices: optional overrides; leave blank to use the app-created text label devices
 
 Save the child panel app. It does not create an MQTT connection; it uses the MQTT Import devices you selected.
 
@@ -127,6 +129,8 @@ The app binds by selected devices, not by direct MQTT topics. This keeps the MQT
 - Bedroom Main behaves the same way with `p1b52` and `p1b53`.
 - Commanding `<Panel label> Bedroom Main Control` from Hubitat controls Bedroom Main and updates the panel.
 - Tapping the UFH timer button adds 1 minute, then 2 minutes, then caps at 3 minutes.
+- The UFH button text counts down while active and returns to `Start 1m` when idle.
+- The UFH state label shows `ON` while the timer switch is on and `OFF` after expiry.
 - While the timer is active, the UFH virtual switch is on.
 - When the timer expires, the UFH virtual switch turns off.
 - After 60 seconds without touch, the panel backlight turns off.
