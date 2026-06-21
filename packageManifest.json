@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Reduces UFH timer input debounce to 500 ms so deliberate repeated taps can add timer increments more quickly while duplicate button chatter is still ignored.",
+  "releaseNotes": "Adds a Manager MQTT pre-flight checklist for built-in versus external broker setups, including Import/Export readiness checks for external MQTT brokers.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

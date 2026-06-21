@@ -27,7 +27,16 @@ MQTT Import publishes panel commands to:
 hasp/bathroom_panel/command/...
 ```
 
-## 2. Configure Hubitat MQTT Import
+## 2. Configure Hubitat MQTT Integrations
+
+Choose one MQTT topology before mapping panel controls:
+
+- Hubitat built-in MQTT service: configure the OpenHASP plate to use Hubitat's MQTT service.
+- External MQTT broker: install and enable both Hubitat MQTT Import Integration and Hubitat MQTT Export Integration, and point both integrations plus the OpenHASP plate at the same broker.
+
+The `OpenHASP Manager` app includes a MQTT pre-flight section for this choice. For an external broker, complete the Import, Export, and same-broker confirmations before adding panel child apps.
+
+## 3. Configure Hubitat MQTT Import
 
 Install and enable Hubitat MQTT Import Integration, then connect it to the same broker as the OpenHASP plate.
 
@@ -51,7 +60,7 @@ On Hubitat 2.5.0.159, MQTT Import does not support arbitrary string command capa
 
 To update labels from Hubitat, enable `Create OpenHASP MQTT text label devices` in the panel app and enter the broker URI, username, and password. The app will create `OpenHASP Text Label` child devices for rows that have a level label object id, then publish the target device's current level to topics such as `hasp/bathroom_panel/command/p1b44.text` and `hasp/bathroom_panel/command/p1b54.text`. It also creates timer label devices for `p1b21.text` and `p1b13.text` by default.
 
-## 3. Install the Hubitat Package
+## 4. Install the Hubitat Package
 
 Install via Hubitat Package Manager using:
 
@@ -61,9 +70,14 @@ https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.j
 
 Or paste `apps/openhasp-manager.groovy` manually from the package manifest.
 
-## 4. Create the Manager App and Add a Panel
+## 5. Create the Manager App and Add a Panel
 
 Open Apps and add `OpenHASP Manager`.
+
+In the MQTT pre-flight section:
+
+- Select `Hubitat built-in MQTT service` if OpenHASP is using Hubitat's MQTT broker.
+- Select `External MQTT broker` if OpenHASP is using another broker, then confirm that MQTT Import, MQTT Export, and OpenHASP are all on that broker.
 
 Inside `OpenHASP Manager`, choose `Add OpenHASP panel`. Configure the child panel:
 
@@ -103,7 +117,7 @@ Timer mapping:
 
 Save the child panel app. It does not create an MQTT connection; it uses the MQTT Import devices you selected.
 
-## 5. Check Devices
+## 6. Check Devices
 
 MQTT Import devices should appear in Hubitat as normal devices. They represent the panel's MQTT controls and are used by the manager app as event and command endpoints.
 
@@ -116,11 +130,11 @@ Use these app-created controls, the real target devices, or the physical OpenHAS
 
 The panel child app also creates `<Panel label> UFH` when the safe testing switch is enabled.
 
-## 6. Binding Model
+## 7. Binding Model
 
 The app binds by selected devices, not by direct MQTT topics. This keeps the MQTT connection in Hubitat MQTT Import and makes the child app reusable for any OpenHASP plate whose controls are mapped as Hubitat devices.
 
-## 7. Acceptance Checks
+## 8. Acceptance Checks
 
 - Tapping Office Main on the panel turns the Hubitat Office Main device on/off.
 - Moving the Office Main slider changes the Hubitat Office Main level.

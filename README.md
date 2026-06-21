@@ -2,9 +2,10 @@
 
 Reusable Hubitat binding apps for OpenHASP MQTT touch panels.
 
-This package uses Hubitat's built-in MQTT Import Integration as the only MQTT connection. MQTT Import maps OpenHASP topics to normal Hubitat devices. `OpenHASP Manager` lets you add one `OpenHASP Panel` child app per plate, and each panel maps imported controls to ordinary Hubitat devices.
+This package uses Hubitat's built-in MQTT integrations as the Hubitat-facing MQTT layer. MQTT Import maps OpenHASP topics to normal Hubitat devices, and MQTT Export should be available when an external broker is used so Hubitat-originated device state can also be published. `OpenHASP Manager` lets you add one `OpenHASP Panel` child app per plate, and each panel maps imported controls to ordinary Hubitat devices.
 
-- MQTT Import owns the broker connection.
+- MQTT Import owns OpenHASP event ingestion from MQTT.
+- MQTT Export publishes selected Hubitat device state when an external broker is used.
 - MQTT Import devices represent panel controls such as switches, dimmer event streams, dimmer commands, and buttons.
 - `OpenHASP Manager` is the parent app where panels are added.
 - `OpenHASP Panel` child apps subscribe to imported devices, mirror real device state back to the panel, and run timers.
@@ -47,15 +48,17 @@ Install the app from the raw GitHub URL listed in `packageManifest.json`:
 
 ## Quick Start
 
-1. In Hubitat MQTT Import Integration, connect to your MQTT broker.
-2. Map OpenHASP control topics such as `hasp/bathroom_panel/state/p1b42` to Hubitat devices.
-3. Open Apps, add `OpenHASP Manager`.
-4. In `OpenHASP Manager`, choose `Add OpenHASP panel`.
-5. Set the plate name and add mapping rows for each control group.
-6. Select the MQTT Import panel devices and the real Hubitat target devices for each row.
-7. Leave `Create virtual lighting controls for dashboards` enabled if you want Hubitat-facing control devices for the bound lights.
-8. Leave `Create and use a safe virtual timer switch` enabled until the real heating actuator is identified.
-9. Save the panel child app.
+1. Decide whether OpenHASP will use Hubitat's built-in MQTT service or an external MQTT broker.
+2. If using an external broker, install and enable both Hubitat MQTT Import Integration and MQTT Export Integration against the same broker.
+3. In Hubitat MQTT Import Integration, map OpenHASP control topics such as `hasp/bathroom_panel/state/p1b42` to Hubitat devices.
+4. Open Apps, add `OpenHASP Manager`.
+5. Complete the MQTT pre-flight section in `OpenHASP Manager`.
+6. Choose `Add OpenHASP panel`.
+7. Set the plate name and add mapping rows for each control group.
+8. Select the MQTT Import panel devices and the real Hubitat target devices for each row.
+9. Leave `Create virtual lighting controls for dashboards` enabled if you want Hubitat-facing control devices for the bound lights.
+10. Leave `Create and use a safe virtual timer switch` enabled until the real heating actuator is identified.
+11. Save the panel child app.
 
 The app can create virtual lighting controls and the safe UFH virtual switch when requested. It does not connect directly to MQTT.
 

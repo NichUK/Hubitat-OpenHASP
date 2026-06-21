@@ -22,8 +22,30 @@ preferences {
 
 def mainPage() {
     dynamicPage(name: 'mainPage', title: 'OpenHASP Manager', install: true, uninstall: true) {
+        section('MQTT pre-flight') {
+            paragraph mqttPreflightIntro()
+            input 'mqttBrokerMode', 'enum',
+                title: 'MQTT broker mode',
+                options: [
+                    hubitatBuiltIn: 'Hubitat built-in MQTT service',
+                    external: 'External MQTT broker'
+                ],
+                defaultValue: 'external',
+                required: true,
+                submitOnChange: true
+
+            if (mqttBrokerModeValue() == 'hubitatBuiltIn') {
+                paragraph 'Using Hubitat built-in MQTT: configure the OpenHASP plate to connect to the Hubitat MQTT service. This gives Hubitat local read/write access through the built-in MQTT integrations.'
+            } else {
+                paragraph 'Using an external MQTT broker: install and configure both Hubitat MQTT Import Integration and Hubitat MQTT Export Integration against the same broker before adding panels.'
+                input 'mqttImportReady', 'bool', title: 'MQTT Import Integration is installed, enabled, and connected to this broker', defaultValue: false, required: true, submitOnChange: true
+                input 'mqttExportReady', 'bool', title: 'MQTT Export Integration is installed, enabled, and connected to this broker', defaultValue: false, required: true, submitOnChange: true
+                input 'mqttSameBrokerReady', 'bool', title: 'OpenHASP, MQTT Import, and MQTT Export all use the same broker', defaultValue: false, required: true, submitOnChange: true
+                paragraph mqttExternalReadinessMessage()
+            }
+        }
         section('Panels') {
-            paragraph 'Add one child app per OpenHASP plate. MQTT Import remains the MQTT connection; each panel maps imported controls to Hubitat devices.'
+            paragraph panelInstallMessage()
             app(
                 name: 'panels',
                 appName: 'OpenHASP Panel',
@@ -40,6 +62,39 @@ def mainPage() {
             }
         }
     }
+}
+
+String mqttPreflightIntro() {
+    'Choose how MQTT is hosted before adding panels. If Hubitat is hosting MQTT, the built-in service provides the broker. If MQTT is external, Hubitat needs Import for OpenHASP events and Export for Hubitat-originated device state publication.'
+}
+
+String mqttBrokerModeValue() {
+    settings.mqttBrokerMode ?: 'external'
+}
+
+boolean mqttExternalReady() {
+    mqttBrokerModeValue() != 'external' || (settingEnabled(settings.mqttImportReady, false) && settingEnabled(settings.mqttExportReady, false) && settingEnabled(settings.mqttSameBrokerReady, false))
+}
+
+String mqttExternalReadinessMessage() {
+    mqttExternalReady()
+        ? 'External MQTT pre-flight complete.'
+        : 'External MQTT pre-flight is incomplete. Complete the Import, Export, and same-broker checks before relying on panel mappings.'
+}
+
+String panelInstallMessage() {
+    String base = 'Add one child app per OpenHASP plate. Each panel maps imported controls to Hubitat devices.'
+    mqttExternalReady() ? base : "${base} External MQTT pre-flight is still incomplete."
+}
+
+boolean settingEnabled(Object value, boolean defaultValue = true) {
+    if (value == null) {
+        return defaultValue
+    }
+    if (value instanceof Boolean) {
+        return value
+    }
+    !("${value}".trim().toLowerCase() in ['false', '0', 'no', 'off'])
 }
 
 void installed() {
