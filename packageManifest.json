@@ -1,13 +1,15 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Moves MQTT and screen settings into shared manager sections and compacts plate mapping rows.",
+  "category": "Integrations",
+  "tags": "OpenHASP, MQTT, Dashboard, Lighting, Timer",
+  "releaseNotes": "Adds HPM metadata, masks saved MQTT passwords, opens screen settings by default, and makes timer rows reusable boost timers.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",
@@ -17,6 +19,15 @@
       "required": true,
       "oauth": false,
       "primary": true
+    },
+    {
+      "id": "e42a53de-e792-43d5-8729-3a8a0958089e",
+      "name": "Boost Timer",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/boost-timer.groovy",
+      "required": false,
+      "oauth": false,
+      "primary": false
     }
   ],
   "drivers": [
@@ -26,6 +37,13 @@
       "namespace": "nichuk",
       "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-connector.groovy",
       "required": true
+    },
+    {
+      "id": "2d832e4e-7ab5-46fb-a84d-f5e3c77c3b78",
+      "name": "Boost Timer Device",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/boost-timer-device.groovy",
+      "required": false
     }
   ]
 }

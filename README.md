@@ -2,7 +2,7 @@
 
 Reusable Hubitat integration for OpenHASP MQTT touch panels.
 
-Version 0.4.1 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
+Version 0.4.2 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
 
 The MCP/server tooling used during development is not part of day-to-day operation. Once installed, the integration runs on the Hubitat hub and talks to the configured MQTT broker.
 
@@ -16,7 +16,8 @@ The MCP/server tooling used during development is not part of day-to-day operati
 - The connector subscribes to `hasp/<plate>/state/#` and `hasp/<plate>/LWT`.
 - The manager publishes state back to `hasp/<plate>/command/...` and `hasp/<plate>/config/...`.
 - Mapping rows bind OpenHASP object topics to real Hubitat devices.
-- Optional virtual lighting controls and a virtual timer switch can be created for dashboards or safe testing.
+- Optional virtual lighting controls can be created for dashboards.
+- Generic boost timers are provided by the optional `Boost Timer` app and `Boost Timer Device`; OpenHASP can trigger and display them, but the timing behavior is reusable outside OpenHASP.
 
 ## Current Bathroom Example
 
@@ -28,7 +29,7 @@ The default control map matches a 480x480 `bathroom_panel` page:
 | dimmer | Office Main Level | `state/p1b43` | `command/p1b43.val` | `Office Main`; label `command/p1b44.text` |
 | switch | Bedroom Main | `state/p1b52` | `command/p1b52.val` | `Bedroom Main` |
 | dimmer | Bedroom Main Level | `state/p1b53` | `command/p1b53.val` | `Bedroom Main`; label `command/p1b54.text` |
-| timerButton | Underfloor Heating | `state/p1b21` | none | virtual UFH switch |
+| timerButton | Underfloor Heating | `state/p1b21` | n/a | virtual UFH switch |
 
 Screen defaults:
 
@@ -41,19 +42,21 @@ Screen defaults:
 
 For testing, the timer defaults to a 1 minute increment and a 3 minute maximum. For production, set the timer preferences to 60 and 180 minutes.
 
+For a reusable setup, install the optional `Boost Timer` app from HPM, create a timer device for the heating circuit, then select that device in OpenHASP Manager's optional integrations section. That enables the `Boost timer` mapping row type. The row will call `boost()` on the device and mirror its `displayText` and switch state back to the panel.
+
 ## Installation
 
 ### Hubitat Package Manager
 
-Add this repository manifest to HPM:
+Add this repository manifest to HPM as a custom repository:
 
 ```text
-https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.json
+https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/repository.json
 ```
 
 Install `Hubitat OpenHASP`.
 
-HPM installs both required pieces: the `OpenHASP Manager` app and the `OpenHASP Connector` driver. Hubitat's manual `Add user app` screen only adds the app code; when installing manually, add the driver separately from `Drivers Code`.
+HPM reads the package definition from `packageManifest.json` and installs the required `OpenHASP Manager` app and `OpenHASP Connector` driver. It can also install the optional generic `Boost Timer` app and `Boost Timer Device` driver. Hubitat's manual `Add user app` screen only adds the app code; when installing manually, add matching drivers separately from `Drivers Code`.
 
 ### Manual Install
 

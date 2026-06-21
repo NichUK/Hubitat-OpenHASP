@@ -9,8 +9,10 @@ class HubitatAppSyntaxSpec extends Specification {
 
         expect:
         [
+            'apps/boost-timer.groovy',
             'apps/openhasp-manager.groovy',
             'apps/openhasp-panel.groovy',
+            'drivers/boost-timer-device.groovy',
             'drivers/openhasp-connector.groovy',
             'drivers/openhasp-text-label.groovy'
         ].each { String fileName ->

@@ -6,6 +6,9 @@
 
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
+import groovy.transform.Field
+
+@Field static final String PASSWORD_MASK = '*********'
 
 definition(
     name: 'OpenHASP Manager',
@@ -33,15 +36,26 @@ def mainPage() {
             input mqttSetting('brokerHost'), 'text', title: 'Host', defaultValue: mqtt.brokerHost ?: '10.0.0.65', required: true, width: 3
             input mqttSetting('brokerPort'), 'number', title: 'Port', defaultValue: mqtt.brokerPort ?: 1883, required: true, width: 2
             input mqttSetting('mqttUsername'), 'text', title: 'Username', defaultValue: mqtt.mqttUsername ?: '', required: false, width: 2
-            input mqttSetting('mqttPassword'), 'password', title: 'Password', required: false, width: 3
+            if (hasSettingValue(mqtt.mqttPassword)) {
+                input mqttSetting('mqttPasswordDisplay'), 'text', title: 'Password', defaultValue: PASSWORD_MASK, required: false, width: 2
+                input mqttSetting('changeMqttPassword'), 'bool', title: 'Change MQTT password', defaultValue: false, required: false, submitOnChange: true, width: 1
+                if (settingEnabled(settings[mqttSetting('changeMqttPassword')], false)) {
+                    input mqttSetting('mqttPassword'), 'password', title: 'New password', required: false, width: 3
+                }
+            } else {
+                input mqttSetting('mqttPassword'), 'password', title: 'Password', required: false, width: 3
+            }
         }
-        section('Screen idle/backlight', hideable: true, hidden: true) {
+        section('Screen idle/backlight', hideable: true, hidden: false) {
             input screenSetting('idleTopic'), 'text', title: 'Idle state suffix', defaultValue: screen.idleTopic ?: 'state/idle', required: true, width: 3
             input screenSetting('backlightTopic'), 'text', title: 'Backlight command suffix', defaultValue: screen.backlightTopic ?: 'command/backlight', required: true, width: 3
             input screenSetting('guiConfigTopic'), 'text', title: 'GUI config suffix', defaultValue: screen.guiConfigTopic ?: 'config/gui', required: true, width: 3
             input screenSetting('screenIdleSeconds'), 'number', title: 'Idle seconds', defaultValue: screen.screenIdleSeconds ?: 60, required: true, width: 3
             input screenSetting('screenBacklightBrightness'), 'number', title: 'Normal brightness', defaultValue: screen.screenBacklightBrightness ?: 42, required: true, width: 3
             input screenSetting('screenWakeBrightness'), 'number', title: 'Wake brightness', defaultValue: screen.screenWakeBrightness ?: 255, required: true, width: 3
+        }
+        section('Optional integrations', hideable: true, hidden: false) {
+            input 'boostTimerDevices', 'capability.actuator', title: 'Boost Timer devices', multiple: true, required: false, submitOnChange: true
         }
         section('OpenHASP plates') {
             paragraph 'Each plate has its own MQTT connector and mapping rows. The connector uses the shared broker settings above.'
@@ -80,20 +94,29 @@ void mappingInputs(String plateId, String rowId, int rowNumber) {
     input "${prefix}label", 'text', title: 'Label', defaultValue: row.label ?: "Row ${rowNumber}", required: false, width: 2
     input "${prefix}type", 'enum',
         title: 'Type',
-        options: [switch: 'Switch', dimmer: 'Dimmer', timerButton: 'Timer button'],
+        options: rowTypeOptions(row.type ?: 'switch'),
         defaultValue: row.type ?: 'switch',
         required: true,
         submitOnChange: true,
         width: 1
     input "${prefix}incoming", 'text', title: 'Incoming', defaultValue: row.incoming ?: '', required: false, width: 2
-    input "${prefix}outgoing", 'text', title: 'Outgoing', defaultValue: row.outgoing ?: '', required: false, width: 2
     String type = settingString("${prefix}type", row.type ?: 'switch')
+    if (type != 'timerButton') {
+        input "${prefix}outgoing", 'text', title: 'Outgoing', defaultValue: row.outgoing ?: '', required: false, width: 2
+    }
     if (type == 'dimmer') {
         input "${prefix}targetDimmer", 'capability.switchLevel', title: 'Target', multiple: false, required: false, width: 2
         input "${prefix}labelTopic", 'text', title: 'Level label', defaultValue: row.labelTopic ?: '', required: false, width: 2
+    } else if (type == 'timerButton') {
+        if (boostTimerAvailable()) {
+            input "${prefix}targetBoostTimer", 'enum', title: 'Timer target', options: boostTimerDeviceOptions(), defaultValue: row.targetBoostTimer ?: '', required: false, width: 2
+        } else {
+            paragraph 'Select a Boost Timer device in Optional integrations to target a reusable timer.'
+        }
+        input "${prefix}labelTopic", 'text', title: 'Button label', defaultValue: row.labelTopic ?: '', required: false, width: 2
     } else {
-        input "${prefix}targetSwitch", 'capability.switch', title: type == 'timerButton' ? 'Timer target' : 'Target', multiple: false, required: false, width: 2
-        input "${prefix}labelTopic", 'text', title: type == 'timerButton' ? 'Button label' : 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
+        input "${prefix}targetSwitch", 'capability.switch', title: 'Target', multiple: false, required: false, width: 2
+        input "${prefix}labelTopic", 'text', title: 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
     }
     if (type == 'timerButton') {
         input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
@@ -133,6 +156,7 @@ void initialize() {
             if (target) {
                 subscribe(target, 'switch', targetSwitchHandler)
                 if (row.type == 'dimmer') subscribe(target, 'level', targetLevelHandler)
+                if (row.type == 'timerButton') subscribe(target, 'displayText', targetTimerDisplayHandler)
             }
             def control = managedControl(plate, row)
             if (control) {
@@ -214,6 +238,14 @@ void targetLevelHandler(evt) {
     }
 }
 
+void targetTimerDisplayHandler(evt) {
+    activePlateConfigs().each { Map plate ->
+        plate.rows.findAll { it.type == 'timerButton' && rowTarget(it)?.id?.toString() == evt.deviceId?.toString() }.each { Map row ->
+            publishTimerState(plate, row)
+        }
+    }
+}
+
 void controlSwitchHandler(evt) {
     if (suppressPendingControl(evt, 'switch')) return
     Map match = rowForControl(evt.deviceId)
@@ -241,13 +273,19 @@ void handleDimmerMessage(Map plate, Map row, String payload) {
 
 void handleTimerMessage(Map plate, Map row, String payload) {
     if (!openHaspEventIsAction(payload) || suppressTimerBounce(row)) return
+    def target = rowTarget(row)
+    if (target) {
+        commandBoostTarget(target)
+        publishTimerState(plate, row)
+        return
+    }
     long nowSeconds = epochSeconds()
     int incrementSeconds = Math.max(1, safeInt(row.timerIncrementMinutes, 1)) * 60
     int maxSeconds = Math.max(incrementSeconds, safeInt(row.timerMaxMinutes, 3) * 60)
     Map timers = (state.timers ?: [:]) as Map
     timers[row.key] = addTimerSeconds(nowSeconds, safeLong(timers[row.key], 0L), incrementSeconds, maxSeconds)
     state.timers = timers
-    commandSwitch(rowTarget(row) ?: managedTimerSwitch(plate, row), 'on')
+    commandSwitch(managedTimerSwitch(plate, row), 'on')
     publishTimerState(plate, row)
     runIn(1, 'timerTick')
 }
@@ -265,14 +303,14 @@ void handleIdleMessage(Map plate, String payload) {
 void timerTick() {
     boolean anyRemaining = false
     activePlateConfigs().each { Map plate ->
-        plate.rows.findAll { it.type == 'timerButton' }.each { Map row ->
+        plate.rows.findAll { it.type == 'timerButton' && !rowTarget(it) }.each { Map row ->
             long remaining = remainingTimerSeconds(row)
             if (remaining <= 0) {
                 Map timers = (state.timers ?: [:]) as Map
                 if (timers[row.key]) {
                     timers.remove(row.key)
                     state.timers = timers
-                    commandSwitch(rowTarget(row) ?: managedTimerSwitch(plate, row), 'off')
+                    commandSwitch(managedTimerSwitch(plate, row), 'off')
                     publishTimerState(plate, row)
                 }
             } else {
@@ -309,13 +347,33 @@ void publishRowLevel(Map plate, Map row, int level) {
 }
 
 void publishTimerState(Map plate, Map row) {
+    def target = rowTarget(row)
+    if (target && hasTimerDisplay(target)) {
+        if (row.labelTopic) publishPlateTopic(plate, row.labelTopic, "${target.currentValue('displayText') ?: 'Start'}", false)
+        if (row.stateLabelTopic) publishPlateTopic(plate, row.stateLabelTopic, target.currentSwitch == 'on' ? 'ON' : 'OFF', false)
+        return
+    }
     long remaining = remainingTimerSeconds(row)
     int incrementSeconds = Math.max(1, safeInt(row.timerIncrementMinutes, 1)) * 60
     if (row.labelTopic) publishPlateTopic(plate, row.labelTopic, timerButtonText(remaining, incrementSeconds), false)
     if (row.stateLabelTopic) {
-        def target = rowTarget(row) ?: managedTimerSwitch(plate, row)
-        publishPlateTopic(plate, row.stateLabelTopic, remaining > 0 || target?.currentSwitch == 'on' ? 'ON' : 'OFF', false)
+        def timerTarget = rowTarget(row) ?: managedTimerSwitch(plate, row)
+        publishPlateTopic(plate, row.stateLabelTopic, remaining > 0 || timerTarget?.currentSwitch == 'on' ? 'ON' : 'OFF', false)
     }
+}
+
+void commandBoostTarget(target) {
+    try {
+        target.boost()
+        return
+    } catch (ignored) {
+        // Fall through to switch-style targets.
+    }
+    commandSwitch(target, 'on')
+}
+
+boolean hasTimerDisplay(target) {
+    hasSettingValue(target?.currentValue('displayText')) || target?.currentValue('remainingSeconds') != null
 }
 
 void publishScreenConfig(Map plate) {
@@ -358,11 +416,42 @@ void syncTargetsToPlate(Map plate) {
 }
 
 def rowTarget(Map row) {
+    if (row.type == 'timerButton') {
+        def boostTarget = boostTimerDeviceById(row.targetBoostTimer)
+        if (boostTarget) return boostTarget
+    }
     row.type == 'dimmer' ? row.targetDimmer : row.targetSwitch
 }
 
 int currentTargetLevel(Map row) {
     Math.max(1, Math.min(100, safeInt(rowTarget(row)?.currentLevel, 100)))
+}
+
+Map rowTypeOptions(String currentType = 'switch') {
+    Map options = [switch: 'Switch', dimmer: 'Dimmer']
+    if (boostTimerAvailable() || currentType == 'timerButton') options.timerButton = 'Boost timer'
+    options
+}
+
+boolean boostTimerAvailable() {
+    !selectedBoostTimerDevices().isEmpty()
+}
+
+Map boostTimerDeviceOptions() {
+    selectedBoostTimerDevices().collectEntries { device ->
+        [("${device.id}"): device.displayName]
+    }
+}
+
+def boostTimerDeviceById(Object id) {
+    if (!hasSettingValue(id)) return null
+    selectedBoostTimerDevices().find { "${it.id}" == "${id}" }
+}
+
+List selectedBoostTimerDevices() {
+    def selected = settings.boostTimerDevices
+    if (!selected) return []
+    selected instanceof Collection ? selected as List : [selected]
 }
 
 void commandSwitch(device, Object value) {
@@ -521,6 +610,7 @@ void syncStateFromSettings() {
             row.createVirtualTimer = settingEnabled(settings["${prefix}createVirtualTimer"], settingEnabled(row.createVirtualTimer, true))
             row.targetSwitch = settings["${prefix}targetSwitch"]
             row.targetDimmer = settings["${prefix}targetDimmer"]
+            row.targetBoostTimer = settings["${prefix}targetBoostTimer"]
             row.key = "${plateId}:${rowId}"
             row
         }
@@ -531,8 +621,14 @@ void syncStateFromSettings() {
 
 void syncGlobalStateFromSettings() {
     Map mqtt = mqttState()
-    ['baseTopic', 'brokerHost', 'mqttUsername', 'mqttPassword'].each { String key ->
+    ['baseTopic', 'brokerHost', 'mqttUsername'].each { String key ->
         if (settings.containsKey(mqttSetting(key))) mqtt[key] = settings[mqttSetting(key)]
+    }
+    if (settings.containsKey(mqttSetting('mqttPassword'))) {
+        String submittedPassword = "${settings[mqttSetting('mqttPassword')] ?: ''}"
+        if (submittedPassword && submittedPassword != PASSWORD_MASK) {
+            mqtt.mqttPassword = submittedPassword
+        }
     }
     if (settings.containsKey(mqttSetting('brokerPort'))) {
         mqtt.brokerPort = safeInt(settings[mqttSetting('brokerPort')], safeInt(mqtt.brokerPort, 1883))
@@ -718,6 +814,10 @@ String newId() {
 
 String settingString(String name, String fallback = '') {
     hasSettingValue(settings[name]) ? "${settings[name]}" : fallback
+}
+
+String passwordDisplayValue(Object savedPassword) {
+    hasSettingValue(savedPassword) ? PASSWORD_MASK : ''
 }
 
 boolean hasSettingValue(Object value) {

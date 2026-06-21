@@ -10,6 +10,9 @@ flowchart LR
     Broker --> Connector["OpenHASP Connector child driver"]
     Connector -->|"message attribute JSON"| Manager["OpenHASP Manager"]
     Manager --> Targets["Hubitat target devices"]
+    Manager -->|"optional timer button boost()"| Boost["Boost Timer Device"]
+    Boost --> TimerApp["Boost Timer app"]
+    TimerApp --> Targets
     Targets --> Manager
     Manager -->|"hasp/{plate}/command/# and config/#"| Connector
     Connector --> Broker
@@ -32,7 +35,7 @@ Hubitat-originated state changes are mirrored back to OpenHASP command topics.
 
 Dimmer rows publish slider level and label text from Hubitat level state. Switch rows publish `1` or `0`. This separation prevents a switch state event from overwriting a slider level.
 
-Timer rows keep their switch on while a countdown is active and publish button/state labels on every tick.
+Timer rows can target the optional generic `Boost Timer Device`. The device publishes `integrationType=boostTimer` and `openHaspRowType=timerButton`; once a Boost Timer device is selected in OpenHASP Manager optional integrations, `Boost timer` is exposed as a row type. In that mode OpenHASP Manager calls `boost()` and mirrors the device `displayText` and switch state back to the panel. Blank-target timer rows still use the manager's legacy fallback timer for backwards compatibility.
 
 ## Tests
 

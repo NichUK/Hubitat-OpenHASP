@@ -32,13 +32,18 @@ hasp/bathroom_panel/config/...
 Install via Hubitat Package Manager using:
 
 ```text
-https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.json
+https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/repository.json
 ```
 
 Or paste these files manually:
 
 - `apps/openhasp-manager.groovy`
 - `drivers/openhasp-connector.groovy`
+
+Optional reusable boost timer support is packaged with:
+
+- `apps/boost-timer.groovy`
+- `drivers/boost-timer-device.groovy`
 
 ## 3. Create the Manager App
 
@@ -80,7 +85,7 @@ For the lighting rows, select the real Hubitat devices:
 - Office switch and Office dimmer rows: `Office Main`
 - Bedroom switch and Bedroom dimmer rows: `Bedroom Main`
 
-For the timer row, leave the target blank to use the virtual UFH switch until the real heating actuator is identified.
+For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app in the OpenHASP Manager optional integrations section. Once at least one Boost Timer device is selected there, `Boost timer` appears as a mapping row type. Leave the target blank only for the built-in legacy fallback timer.
 
 ## 5. MQTT Broker
 
@@ -124,7 +129,14 @@ Dimmer rows parse OpenHASP slider `val` values and command the selected Hubitat 
 
 Target device state changes publish back to OpenHASP command topics. The app deliberately avoids echoing panel-originated commands directly back to the same OpenHASP control; it waits for Hubitat target state.
 
-Timer rows add the configured increment on each valid press, cap at the configured maximum, keep the selected or virtual timer switch on while active, and switch it off when the countdown expires.
+Timer rows should normally target a generic `Boost Timer Device`. OpenHASP sends a button press, the timer device owns the countdown and target switch, and OpenHASP mirrors the timer device `displayText` and switch state back to label topics.
+
+If a timer row has no selected target, OpenHASP Manager uses its built-in legacy fallback timer. That keeps older installs working, but reusable installations should use the separate `Boost Timer` app.
+
+`Boost Timer Device` publishes metadata attributes:
+
+- `integrationType`: `boostTimer`
+- `openHaspRowType`: `timerButton`
 
 ## 8. Devices Created
 
@@ -136,9 +148,13 @@ When virtual lighting controls are enabled, switch and dimmer rows also create:
 
 - `<Plate label> <Row label> Control`
 
-When a timer row has no selected target and virtual timer is enabled, the app creates:
+When a timer row has no selected target and virtual timer is enabled, the OpenHASP fallback creates:
 
 - `<Plate label> <Timer label>`
+
+The optional `Boost Timer` app creates:
+
+- `<Timer label>`
 
 ## 9. Acceptance Checks
 
