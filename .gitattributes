@@ -1,0 +1,4 @@
+*.groovy text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.gradle text eol=lf

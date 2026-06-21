@@ -1,0 +1,52 @@
+{
+  "packageName": "Hubitat OpenHASP",
+  "author": "NichUK",
+  "version": "0.1.0",
+  "minimumHEVersion": "2.3.0",
+  "dateReleased": "2026-06-21",
+  "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
+  "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
+  "communityLink": "",
+  "releaseNotes": "Initial reusable OpenHASP MQTT panel integration for Hubitat. Includes a parent MQTT panel driver, child switch/dimmer/timer devices, a binding manager app, bathroom-panel example configuration, tests, and documentation.",
+  "apps": [
+    {
+      "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",
+      "name": "OpenHASP Manager",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-manager.groovy",
+      "required": true,
+      "oauth": false,
+      "primary": true
+    }
+  ],
+  "drivers": [
+    {
+      "id": "5a8bf3ce-72d8-4fe1-bc15-f42f5f74483d",
+      "name": "OpenHASP Panel",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-panel.groovy",
+      "required": true
+    },
+    {
+      "id": "18ce874f-19eb-4dd2-b8cd-c04c0f87a851",
+      "name": "OpenHASP Child Switch",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-child-switch.groovy",
+      "required": true
+    },
+    {
+      "id": "9333eaca-db31-421e-b413-702a4094e7d0",
+      "name": "OpenHASP Child Dimmer",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-child-dimmer.groovy",
+      "required": true
+    },
+    {
+      "id": "de4c6d32-e898-4f14-9b19-10b35dba8a26",
+      "name": "OpenHASP Timer Button",
+      "namespace": "nichuk",
+      "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/drivers/openhasp-timer-button.groovy",
+      "required": true
+    }
+  ]
+}

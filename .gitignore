@@ -1,0 +1,10 @@
+.gradle/
+build/
+*.bak
+*.backup
+*.local.json
+config.local.*
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
