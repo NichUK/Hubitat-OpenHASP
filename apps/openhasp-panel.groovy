@@ -145,7 +145,7 @@ void lightPanelSwitchHandler(evt) {
             if (debugLogging) log.debug "Ignoring mirrored ${mapping.name} panel switch ${switchValue}"
             return
         }
-        recordPendingTargetSwitch(mapping, switchValue)
+        recordPendingTargetSwitch(mapping, switchValue, 'panel')
         syncLightingControl(mapping, switchValue, currentTargetLevel(mapping))
         commandSwitch(mapping.target, switchValue)
     }
@@ -155,7 +155,7 @@ void lightPanelLevelEventHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'panelLevelEvent')
     if (mapping) {
         int level = normalizeLevelValue(evt.value, 100)
-        recordPendingTargetLevel(mapping, level)
+        recordPendingTargetLevel(mapping, level, 'panel')
         syncLightingControl(mapping, 'on', level)
         commandLevel(mapping.target, level)
     }
@@ -165,8 +165,11 @@ void lightControlSwitchHandler(evt) {
     Map mapping = lightMappingForControl(evt.deviceId)
     if (mapping) {
         String switchValue = normalizeSwitchValue(evt.value)
-        recordPendingTargetSwitch(mapping, switchValue)
-        mirrorRequestedSwitch(mapping, switchValue)
+        if (suppressLightingControlSwitchEcho(mapping, switchValue)) {
+            if (debugLogging) log.debug "Ignoring synced ${mapping.name} control switch ${switchValue}"
+            return
+        }
+        recordPendingTargetSwitch(mapping, switchValue, 'hubitat')
         commandSwitch(mapping.target, switchValue)
     }
 }
@@ -175,8 +178,11 @@ void lightControlLevelHandler(evt) {
     Map mapping = lightMappingForControl(evt.deviceId)
     if (mapping) {
         int level = normalizeLevelValue(evt.value, 100)
-        recordPendingTargetLevel(mapping, level)
-        mirrorRequestedLevel(mapping, level)
+        if (suppressLightingControlLevelEcho(mapping, level)) {
+            if (debugLogging) log.debug "Ignoring synced ${mapping.name} control level ${level}"
+            return
+        }
+        recordPendingTargetLevel(mapping, level, 'hubitat')
         commandLevel(mapping.target, level)
     }
 }
@@ -185,11 +191,14 @@ void lightTargetSwitchHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'target')
     if (!mapping) return
     String switchValue = normalizeSwitchValue(evt.value)
-    if (suppressStaleTargetSwitch(mapping, switchValue)) {
+    String pendingStatus = pendingTargetSwitchStatus(mapping, switchValue)
+    if (pendingStatus == 'stale') {
         if (debugLogging) log.debug "Ignoring stale ${mapping.name} switch report ${switchValue}; waiting for pending switch"
         return
     }
-    commandPanelSwitch(mapping, switchValue)
+    if (pendingStatus != 'matched-panel') {
+        commandPanelSwitch(mapping, switchValue)
+    }
     int level = currentTargetLevel(mapping)
     sendLightLevelText(mapping, level)
     syncLightingControl(mapping, switchValue, level)
@@ -199,11 +208,14 @@ void lightTargetLevelHandler(evt) {
     Map mapping = lightMappingForDevice(evt.deviceId, 'target')
     if (!mapping) return
     int level = safeInt(evt.value, 100)
-    if (suppressStaleTargetLevel(mapping, level)) {
+    String pendingStatus = pendingTargetLevelStatus(mapping, level)
+    if (pendingStatus == 'stale') {
         if (debugLogging) log.debug "Ignoring stale ${mapping.name} level report ${level}; waiting for pending level"
         return
     }
-    commandLevelOnly(mapping.panelLevelCommand, level)
+    if (pendingStatus != 'matched-panel') {
+        commandLevelOnly(mapping.panelLevelCommand, level)
+    }
     sendLightLevelText(mapping, level)
     syncLightingControl(mapping, mapping.target?.currentSwitch ?: 'on', level)
 }
@@ -319,53 +331,41 @@ boolean sameDevice(device, Object deviceId) {
     device && "${device.id}" == "${deviceId}"
 }
 
-void mirrorRequestedLevel(Map mapping, int level) {
-    int bounded = Math.max(1, Math.min(100, level))
-    commandLevelOnly(mapping.panelLevelCommand, bounded)
-    sendLightLevelText(mapping, bounded)
-    syncLightingControl(mapping, 'on', bounded)
-}
-
-void mirrorRequestedSwitch(Map mapping, String switchValue) {
-    commandPanelSwitch(mapping, switchValue)
-    int level = currentTargetLevel(mapping)
-    sendLightLevelText(mapping, level)
-    syncLightingControl(mapping, switchValue, level)
-}
-
 void commandPanelSwitch(Map mapping, String switchValue) {
     if (!mapping.panelSwitch) return
     recordPanelSwitchEcho(mapping, switchValue)
     commandSwitch(mapping.panelSwitch, switchValue)
 }
 
-void recordPendingTargetSwitch(Map mapping, String switchValue) {
+void recordPendingTargetSwitch(Map mapping, String switchValue, String source) {
     Map pending = (state.pendingTargetSwitches ?: [:]) as Map
     pending["${mapping.index}"] = [
         value: normalizeSwitchValue(switchValue),
+        source: source,
         until: now() + 8000L
     ]
     state.pendingTargetSwitches = pending
 }
 
-boolean suppressStaleTargetSwitch(Map mapping, String reportedValue) {
+String pendingTargetSwitchStatus(Map mapping, String reportedValue) {
     Map pending = (state.pendingTargetSwitches ?: [:]) as Map
     Map entry = pending["${mapping.index}"] as Map
     if (!entry) {
-        return false
+        return 'none'
     }
     if (now() > safeLong(entry.until, 0L)) {
         pending.remove("${mapping.index}")
         state.pendingTargetSwitches = pending
-        return false
+        return 'none'
     }
     String desiredValue = normalizeSwitchValue(entry.value)
     if (normalizeSwitchValue(reportedValue) == desiredValue) {
+        String source = "${entry.source ?: 'hubitat'}"
         pending.remove("${mapping.index}")
         state.pendingTargetSwitches = pending
-        return false
+        return source == 'panel' ? 'matched-panel' : 'matched-hubitat'
     }
-    true
+    'stale'
 }
 
 void recordPanelSwitchEcho(Map mapping, String switchValue) {
@@ -396,33 +396,90 @@ boolean suppressPanelSwitchEcho(Map mapping, String reportedValue) {
     false
 }
 
-void recordPendingTargetLevel(Map mapping, int level) {
-    Map pending = (state.pendingTargetLevels ?: [:]) as Map
-    pending["${mapping.index}"] = [
-        level: Math.max(1, Math.min(100, level)),
-        until: now() + 8000L
+void recordLightingControlEcho(Map mapping, String switchValue, int levelValue) {
+    Map switchPending = (state.pendingControlSwitchEchoes ?: [:]) as Map
+    switchPending["${mapping.index}"] = [
+        value: normalizeSwitchValue(switchValue),
+        until: now() + 3000L
     ]
-    state.pendingTargetLevels = pending
+    state.pendingControlSwitchEchoes = switchPending
+
+    Map levelPending = (state.pendingControlLevelEchoes ?: [:]) as Map
+    levelPending["${mapping.index}"] = [
+        level: Math.max(1, Math.min(100, levelValue)),
+        until: now() + 3000L
+    ]
+    state.pendingControlLevelEchoes = levelPending
 }
 
-boolean suppressStaleTargetLevel(Map mapping, int reportedLevel) {
-    Map pending = (state.pendingTargetLevels ?: [:]) as Map
+boolean suppressLightingControlSwitchEcho(Map mapping, String reportedValue) {
+    Map pending = (state.pendingControlSwitchEchoes ?: [:]) as Map
     Map entry = pending["${mapping.index}"] as Map
     if (!entry) {
         return false
     }
     if (now() > safeLong(entry.until, 0L)) {
         pending.remove("${mapping.index}")
-        state.pendingTargetLevels = pending
+        state.pendingControlSwitchEchoes = pending
+        return false
+    }
+    if (normalizeSwitchValue(reportedValue) == normalizeSwitchValue(entry.value)) {
+        pending.remove("${mapping.index}")
+        state.pendingControlSwitchEchoes = pending
+        return true
+    }
+    false
+}
+
+boolean suppressLightingControlLevelEcho(Map mapping, int reportedLevel) {
+    Map pending = (state.pendingControlLevelEchoes ?: [:]) as Map
+    Map entry = pending["${mapping.index}"] as Map
+    if (!entry) {
+        return false
+    }
+    if (now() > safeLong(entry.until, 0L)) {
+        pending.remove("${mapping.index}")
+        state.pendingControlLevelEchoes = pending
         return false
     }
     int desiredLevel = safeInt(entry.level, reportedLevel)
     if (Math.abs(reportedLevel - desiredLevel) <= 1) {
         pending.remove("${mapping.index}")
-        state.pendingTargetLevels = pending
-        return false
+        state.pendingControlLevelEchoes = pending
+        return true
     }
-    true
+    false
+}
+
+void recordPendingTargetLevel(Map mapping, int level, String source) {
+    Map pending = (state.pendingTargetLevels ?: [:]) as Map
+    pending["${mapping.index}"] = [
+        level: Math.max(1, Math.min(100, level)),
+        source: source,
+        until: now() + 8000L
+    ]
+    state.pendingTargetLevels = pending
+}
+
+String pendingTargetLevelStatus(Map mapping, int reportedLevel) {
+    Map pending = (state.pendingTargetLevels ?: [:]) as Map
+    Map entry = pending["${mapping.index}"] as Map
+    if (!entry) {
+        return 'none'
+    }
+    if (now() > safeLong(entry.until, 0L)) {
+        pending.remove("${mapping.index}")
+        state.pendingTargetLevels = pending
+        return 'none'
+    }
+    int desiredLevel = safeInt(entry.level, reportedLevel)
+    if (Math.abs(reportedLevel - desiredLevel) <= 1) {
+        String source = "${entry.source ?: 'hubitat'}"
+        pending.remove("${mapping.index}")
+        state.pendingTargetLevels = pending
+        return source == 'panel' ? 'matched-panel' : 'matched-hubitat'
+    }
+    'stale'
 }
 
 def activeLightingControl(Map mapping) {
@@ -496,6 +553,7 @@ void syncLightingControl(Map mapping, Object switchValue, Object levelValue) {
     if (!child) return
     String normalizedSwitch = normalizeSwitchValue(switchValue)
     int normalizedLevel = Math.max(1, Math.min(100, safeInt(levelValue, 100)))
+    recordLightingControlEcho(mapping, normalizedSwitch, normalizedLevel)
     child.sendEvent(name: 'switch', value: normalizedSwitch, isStateChange: false)
     child.sendEvent(name: 'level', value: normalizedLevel, unit: '%', isStateChange: false)
 }
