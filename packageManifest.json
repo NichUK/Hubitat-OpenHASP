@@ -1,13 +1,13 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-21",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
   "documentationLink": "https://github.com/NichUK/Hubitat-OpenHASP/blob/main/README.md",
   "communityLink": "",
-  "releaseNotes": "Adds managed OpenHASP text-label devices for the UFH timer button and ON/OFF state label so the Hubitat-native timer can update the panel display.",
+  "releaseNotes": "Adds UFH timer input filtering so OpenHASP button down/up or duplicate switch events only add one timer increment per physical tap.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

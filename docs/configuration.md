@@ -131,6 +131,7 @@ The app binds by selected devices, not by direct MQTT topics. This keeps the MQT
 - Tapping the UFH timer button adds 1 minute, then 2 minutes, then caps at 3 minutes.
 - The UFH button text counts down while active and returns to `Start 1m` when idle.
 - The UFH state label shows `ON` while the timer switch is on and `OFF` after expiry.
+- Button down/up chatter and duplicate timer switch events inside the debounce window are ignored, so one physical tap adds one increment.
 - While the timer is active, the UFH virtual switch is on.
 - When the timer expires, the UFH virtual switch turns off.
 - After 60 seconds without touch, the panel backlight turns off.

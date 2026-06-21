@@ -228,10 +228,22 @@ void lightTargetLevelHandler(evt) {
 }
 
 void timerPanelButtonHandler(evt) {
+    if (suppressTimerInputBounce(evt)) {
+        if (debugLogging) log.debug 'Ignoring duplicate timer button event'
+        return
+    }
     addTimerIncrement()
 }
 
 void timerPanelSwitchHandler(evt) {
+    if (!timerSwitchEventIsAction(evt?.value)) {
+        if (debugLogging) log.debug "Ignoring non-action timer event ${evt?.value}"
+        return
+    }
+    if (suppressTimerInputBounce(evt)) {
+        if (debugLogging) log.debug 'Ignoring duplicate timer switch event'
+        return
+    }
     addTimerIncrement()
 }
 
@@ -259,6 +271,26 @@ void addTimerIncrement() {
     commandSwitch(activeTimerTarget(), 'on')
     updateTimerOutputs()
     runIn(1, 'timerTick')
+}
+
+boolean timerSwitchEventIsAction(Object value) {
+    Map event = openHaspEventPayload(value)
+    if (!event.containsKey('event')) {
+        return true
+    }
+    String name = "${event.event ?: ''}".trim().toLowerCase()
+    name in ['up', 'changed', 'short', 'release', 'released']
+}
+
+boolean suppressTimerInputBounce(evt) {
+    long nowMs = now()
+    long debounceMs = 1000L
+    long lastAt = safeLong(state.lastTimerInputAtMs, 0L)
+    if (lastAt && nowMs - lastAt < debounceMs) {
+        return true
+    }
+    state.lastTimerInputAtMs = nowMs
+    false
 }
 
 void timerTick() {
@@ -755,6 +787,22 @@ Object openHaspPayloadValue(Object value) {
     } catch (ignored) {
     }
     value
+}
+
+Map openHaspEventPayload(Object value) {
+    if (value == null || !(value instanceof CharSequence)) {
+        return [:]
+    }
+    String text = value.toString().trim()
+    if (!text.startsWith('{')) {
+        return [:]
+    }
+    try {
+        def parsed = new JsonSlurper().parseText(text)
+        return parsed instanceof Map ? parsed as Map : [:]
+    } catch (ignored) {
+        return [:]
+    }
 }
 
 long addTimerSeconds(Long nowEpochSeconds, Long currentDeadlineEpochSeconds, int incrementSeconds, int maxSeconds) {
