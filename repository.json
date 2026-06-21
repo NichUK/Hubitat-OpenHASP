@@ -2,7 +2,7 @@
   "packages": [
     {
       "name": "Hubitat OpenHASP",
-      "category": "Control",
+      "category": "Integrations",
       "location": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/packageManifest.json",
       "description": "Reusable direct MQTT connector for OpenHASP panels on Hubitat."
     }

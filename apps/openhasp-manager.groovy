@@ -12,7 +12,7 @@ definition(
     namespace: 'nichuk',
     author: 'NichUK',
     description: 'Manages OpenHASP MQTT plates and maps panel widgets to Hubitat devices.',
-    category: 'Convenience',
+    category: 'Integrations',
     importUrl: 'https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/apps/openhasp-manager.groovy',
     iconUrl: '',
     iconX2Url: '',
