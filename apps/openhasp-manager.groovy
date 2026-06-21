@@ -54,9 +54,6 @@ def mainPage() {
             input screenSetting('screenBacklightBrightness'), 'number', title: 'Normal brightness', defaultValue: screen.screenBacklightBrightness ?: 42, required: true, width: 3
             input screenSetting('screenWakeBrightness'), 'number', title: 'Wake brightness', defaultValue: screen.screenWakeBrightness ?: 255, required: true, width: 3
         }
-        section('Optional integrations', hideable: true, hidden: false) {
-            input 'boostTimerDevices', 'capability.pushableButton', title: 'Boost Timer devices', multiple: true, required: false, submitOnChange: true
-        }
         section('OpenHASP plates') {
             paragraph 'Each plate has its own MQTT connector and mapping rows. The connector uses the shared broker settings above.'
             input 'addPlate', 'button', title: 'Add plate'
@@ -126,18 +123,15 @@ void mappingInputs(String plateId, String rowId, int rowNumber) {
     } else if (type == 'motionDisplay') {
         input "${prefix}targetMotion", 'capability.motionSensor', title: 'Target', multiple: false, required: false, width: 2
     } else if (type == 'timerButton') {
-        if (boostTimerAvailable()) {
-            input "${prefix}targetBoostTimer", 'enum', title: 'Timer target', options: boostTimerDeviceOptions(), defaultValue: row.targetBoostTimer ?: '', required: false, width: 2
-        } else {
-            paragraph 'Select a Boost Timer device in Optional integrations to target a reusable timer.'
-        }
+        input "${prefix}targetBoostTimer", 'capability.pushableButton', title: 'Timer target', multiple: false, required: false, width: 2
+        if (row.targetBoostTimer && !isBoostTimerDevice(row.targetBoostTimer)) paragraph 'Selected target does not expose Boost Timer metadata, so this row will use the legacy fallback timer.'
         input "${prefix}labelTopic", 'text', title: 'Button label', defaultValue: row.labelTopic ?: '', required: false, width: 2
     } else {
         input "${prefix}targetSwitch", 'capability.switch', title: 'Target', multiple: false, required: false, width: 2
         input "${prefix}labelTopic", 'text', title: 'Label topic', defaultValue: row.labelTopic ?: '', required: false, width: 2
     }
     if (type == 'timerButton') {
-        boolean legacyFallback = !boostTimerAvailable()
+        boolean legacyFallback = !isBoostTimerDevice(row.targetBoostTimer)
         if (legacyFallback) {
             paragraph '<b>Legacy fallback timer</b>'
             input "${prefix}timerIncrementMinutes", 'number', title: 'Increment min', defaultValue: row.timerIncrementMinutes ?: 1, required: true, width: 2
@@ -474,7 +468,7 @@ String fullTopic(Map plate, String suffix) {
 }
 
 String plateTopicPrefix(Map plate) {
-    "${cleanTopic(plate.baseTopic ?: 'hasp')}/${cleanTopic(plate.plateName ?: 'panel')}"
+    "${cleanTopic(plate.baseTopic ?: 'hasp')}/${cleanTopic(plate.plateName ?: 'panel')}/"
 }
 
 Map effectivePlateForDisplay(Map plate) {
@@ -510,8 +504,7 @@ def rowTarget(Map row) {
     if (row.type == 'contactDisplay') return row.targetContact
     if (row.type == 'motionDisplay') return row.targetMotion
     if (row.type == 'timerButton') {
-        def boostTarget = boostTimerDeviceById(row.targetBoostTimer)
-        if (boostTarget) return boostTarget
+        if (isBoostTimerDevice(row.targetBoostTimer)) return row.targetBoostTimer
     }
     row.type == 'dimmer' ? row.targetDimmer : row.targetSwitch
 }
@@ -532,7 +525,7 @@ Map rowTypeOptions(String currentType = 'switch') {
         contactDisplay: 'Contact',
         motionDisplay: 'Motion'
     ]
-    if (boostTimerAvailable() || currentType == 'timerButton') options.timerButton = 'Boost timer'
+    options.timerButton = 'Boost timer'
     options
 }
 
@@ -553,28 +546,6 @@ String rowAttributeName(Map row) {
         contactDisplay: 'contact',
         motionDisplay: 'motion'
     ][row.type] as String
-}
-
-boolean boostTimerAvailable() {
-    !selectedBoostTimerDevices().isEmpty()
-}
-
-Map boostTimerDeviceOptions() {
-    selectedBoostTimerDevices().collectEntries { device ->
-        [("${device.id}"): device.displayName]
-    }
-}
-
-def boostTimerDeviceById(Object id) {
-    if (!hasSettingValue(id)) return null
-    selectedBoostTimerDevices().find { "${it.id}" == "${id}" }
-}
-
-List selectedBoostTimerDevices() {
-    def selected = settings.boostTimerDevices
-    if (!selected) return []
-    List devices = selected instanceof Collection ? selected as List : [selected]
-    devices.findAll { isBoostTimerDevice(it) }
 }
 
 boolean isBoostTimerDevice(device) {

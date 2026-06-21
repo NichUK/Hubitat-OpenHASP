@@ -2,7 +2,7 @@
 
 ## Runtime Architecture
 
-Version 0.4.0 uses a direct MQTT connector per OpenHASP plate.
+Version 0.4.4 uses a direct MQTT connector per OpenHASP plate.
 
 ```mermaid
 flowchart LR
@@ -35,7 +35,7 @@ Hubitat-originated state changes are mirrored back to OpenHASP command topics.
 
 Dimmer rows publish slider level and label text from Hubitat level state. Switch rows publish `1` or `0`. This separation prevents a switch state event from overwriting a slider level.
 
-Timer rows can target the optional generic `Boost Timer Device`. The device publishes `integrationType=boostTimer` and `openHaspRowType=timerButton`; once a Boost Timer device is selected in OpenHASP Manager optional integrations, `Boost timer` is exposed as a row type. In that mode OpenHASP Manager calls `boost()` and mirrors the device `displayText` and switch state back to the panel. Blank-target timer rows still use the manager's legacy fallback timer for backwards compatibility.
+Timer rows can target the optional generic `Boost Timer Device`. The device publishes `integrationType=boostTimer` and `openHaspRowType=timerButton`. OpenHASP Manager calls `boost()` on metadata-bearing timer targets and mirrors the device `displayText` and switch state back to the panel. Blank-target timer rows still use the manager's legacy fallback timer for backwards compatibility.
 
 ## Tests
 

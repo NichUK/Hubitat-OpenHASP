@@ -85,7 +85,7 @@ For the lighting rows, select the real Hubitat devices:
 - Office switch and Office dimmer rows: `Office Main`
 - Bedroom switch and Bedroom dimmer rows: `Bedroom Main`
 
-For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app in the OpenHASP Manager optional integrations section. Once at least one selected device exposes Boost Timer metadata, `Boost timer` appears as a mapping row type. Leave the target blank only for the built-in legacy fallback timer.
+For the timer row, prefer selecting a `Boost Timer Device` created by the generic `Boost Timer` app directly in the row's `Timer target` field. Leave the target blank only for the built-in legacy fallback timer.
 
 ## 5. MQTT Broker
 
@@ -127,7 +127,7 @@ Switch rows parse OpenHASP `val` values and command the selected Hubitat switch.
 
 Dimmer rows parse OpenHASP slider `val` values and command the selected Hubitat dimmer level.
 
-Switch and dimmer are built from native Hubitat capabilities. Boost timer is different: it is exposed only when a selected integration device advertises Boost Timer metadata.
+Switch and dimmer are built from native Hubitat capabilities. Boost timer is different: it expects a target device that advertises Boost Timer metadata.
 
 Additional native Hubitat capability row types:
 
