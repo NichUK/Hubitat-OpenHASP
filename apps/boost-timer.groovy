@@ -40,13 +40,13 @@ def mainPage() {
             Map timer = timerState(timerId) ?: defaultTimer(timerId)
             String label = settingString(timerSetting(timerId, 'label'), timer.label ?: 'Boost Timer')
             section(label, hideable: true, hidden: index > 0) {
-                input timerSetting(timerId, 'label'), 'text', title: 'Timer label', defaultValue: label, required: true, submitOnChange: true, width: 4
-                input timerSetting(timerId, 'targetSwitch'), 'capability.switch', title: 'Target switch to keep on', multiple: false, required: false, width: 4
-                input timerSetting(timerId, 'incrementMinutes'), 'number', title: 'Add minutes per trigger', defaultValue: timer.incrementMinutes ?: 60, required: true, width: 2
-                input timerSetting(timerId, 'maximumMinutes'), 'number', title: 'Maximum minutes', defaultValue: timer.maximumMinutes ?: 180, required: true, width: 2
-                input timerSetting(timerId, 'debounceMs'), 'number', title: 'Debounce milliseconds', defaultValue: timer.debounceMs ?: 500, required: true, width: 2
-                input timerSetting(timerId, 'triggerSwitches'), 'capability.switch', title: 'Switches that add time when turned on', multiple: true, required: false, width: 6
-                input timerSetting(timerId, 'triggerButtons'), 'capability.pushableButton', title: 'Buttons that add time when pushed', multiple: true, required: false, width: 6
+                input timerSetting(timerId, 'label'), 'text', title: 'Timer label', defaultValue: label, required: true, submitOnChange: true, width: 12
+                input timerSetting(timerId, 'targetSwitch'), 'capability.switch', title: 'Target switch to keep on', multiple: false, required: false, width: 6
+                input timerSetting(timerId, 'incrementMinutes'), 'number', title: 'Add minutes per trigger', defaultValue: timer.incrementMinutes ?: 60, required: true, width: 3
+                input timerSetting(timerId, 'maximumMinutes'), 'number', title: 'Maximum minutes', defaultValue: timer.maximumMinutes ?: 180, required: true, width: 3
+                input timerSetting(timerId, 'debounceMs'), 'number', title: 'Debounce milliseconds', defaultValue: timer.debounceMs ?: 500, required: true, width: 4
+                input timerSetting(timerId, 'triggerSwitches'), 'capability.switch', title: 'Switches that add time when turned on', multiple: true, required: false, width: 12
+                input timerSetting(timerId, 'triggerButtons'), 'capability.pushableButton', title: 'Buttons that add time when pushed', multiple: true, required: false, width: 12
                 paragraph "Timer device: ${timerDevice(timerId)?.displayName ?: 'created when saved'}"
                 if (timerId != 'default') input removeTimerButtonName(timerId), 'button', title: 'Remove timer'
             }

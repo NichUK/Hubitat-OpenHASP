@@ -2,7 +2,7 @@
 
 Reusable Hubitat integration for OpenHASP MQTT touch panels.
 
-Version 0.4.7 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
+Version 0.4.8 uses one `OpenHASP Manager` app plus one `OpenHASP Connector` child driver per plate. The connector owns MQTT directly using Hubitat's `interfaces.mqtt`; MQTT Import and MQTT Export are not required for OpenHASP runtime.
 
 The MCP/server tooling used during development is not part of day-to-day operation. Once installed, the integration runs on the Hubitat hub and talks to the configured MQTT broker.
 
