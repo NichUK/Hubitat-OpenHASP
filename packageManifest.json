@@ -1,7 +1,7 @@
 {
   "packageName": "Hubitat OpenHASP",
   "author": "NichUK",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "minimumHEVersion": "2.3.0",
   "dateReleased": "2026-06-22",
   "licenseFile": "https://raw.githubusercontent.com/NichUK/Hubitat-OpenHASP/main/LICENSE",
@@ -9,7 +9,7 @@
   "communityLink": "",
   "category": "Integrations",
   "tags": "OpenHASP, MQTT, Dashboard, Lighting, Timer",
-  "releaseNotes": "Fixes configured device resolution after Hubitat serializes selected row targets, allowing reusable Boost Timer targets to remain bound after save/reload.",
+  "releaseNotes": "Refactors Boost Timer into a single-instance manager that can create multiple named timer devices, each with its own target switch, duration limits, debounce, and optional triggers.",
   "apps": [
     {
       "id": "c407c68a-1ce9-4bf6-94b1-2710505bbd30",

@@ -149,7 +149,9 @@ Target device state changes publish back to OpenHASP command topics. The app del
 
 Timer rows should normally target a generic `Boost Timer Device`. OpenHASP sends a button press, the timer device owns the countdown and target switch, and OpenHASP mirrors the timer device `displayText` and switch state back to label topics.
 
-If a timer row has no selected target, OpenHASP Manager uses its built-in legacy fallback timer. That keeps older installs working, but reusable installations should use the separate `Boost Timer` app.
+The optional `Boost Timer` app is installed once. Inside it, add one named timer instance per timed output. Each instance has its own collapsible panel with timer label, target switch, minutes per trigger, maximum minutes, debounce, optional trigger switches/buttons, and one child `Boost Timer Device`.
+
+If a timer row has no selected target, OpenHASP Manager uses its built-in legacy fallback timer. That keeps older installs working, but reusable installations should use a named instance in the separate `Boost Timer` app.
 
 `Boost Timer Device` publishes metadata attributes:
 
@@ -170,7 +172,7 @@ When a timer row has no selected target and virtual timer is enabled, the OpenHA
 
 - `<Plate label> <Timer label>`
 
-The optional `Boost Timer` app creates:
+Each timer instance in the optional `Boost Timer` app creates:
 
 - `<Timer label>`
 
