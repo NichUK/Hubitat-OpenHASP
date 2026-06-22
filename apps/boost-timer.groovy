@@ -48,7 +48,7 @@ def mainPage() {
                 input timerSetting(timerId, 'triggerSwitches'), 'capability.switch', title: 'Switches that add time when turned on', multiple: true, required: false, width: 12
                 input timerSetting(timerId, 'triggerButtons'), 'capability.pushableButton', title: 'Buttons that add time when pushed', multiple: true, required: false, width: 12
                 paragraph "Timer device: ${timerDevice(timerId)?.displayName ?: 'created when saved'}"
-                if (timerId != 'default') input removeTimerButtonName(timerId), 'button', title: 'Remove timer'
+                input removeTimerButtonName(timerId), 'button', title: 'Remove this timer'
             }
         }
     }
@@ -91,8 +91,8 @@ String normalizeButtonName(Object buttonName) {
 }
 
 void applyPendingRemoveSettings() {
-    timerIds().findAll { it != 'default' }.each { String timerId ->
-        if (settings.containsKey(removeTimerButtonName(timerId))) removeTimer(timerId)
+    timerStateMap().keySet().collect { "${it}" }.each { String timerId ->
+        if (settings[removeTimerButtonName(timerId)] != null) removeTimer(timerId)
     }
 }
 
@@ -235,13 +235,14 @@ void addTimer() {
     Map timers = timerStateMap()
     timers[id] = defaultTimer(id, nextTimerLabel(timers.size() + 1))
     state.timers = timers
+    state.timerStateInitialized = true
 }
 
 void removeTimer(String timerId) {
-    if (timerId == 'default') return
     Map timers = timerStateMap()
     timers.remove(timerId)
     state.timers = timers
+    state.timerStateInitialized = true
     Map deadlines = deadlineState()
     deadlines.remove(timerId)
     state.deadlines = deadlines
@@ -288,8 +289,9 @@ String timerText(Map timer, long remaining) {
 }
 
 void ensureDefaultTimerState(boolean addIfEmpty = true) {
-    if (state.timers || !addIfEmpty) return
-    state.timers = [default: defaultTimer('default', settingString('timerLabel', 'Boost Timer'))]
+    if (state.timerStateInitialized || state.timers != null || !addIfEmpty) return
+    state.timers = legacyTimerSettingsPresent() ? [default: defaultTimer('default', settingString('timerLabel', 'Boost Timer'))] : [:]
+    state.timerStateInitialized = true
 }
 
 void syncStateFromSettings() {
@@ -387,7 +389,7 @@ String removeTimerButtonName(String timerId) {
 }
 
 boolean timerRemoveRequested(String timerId) {
-    timerId != 'default' && (settings[removeTimerButtonName(timerId)] != null || staleBlankTimer(timerId))
+    settings[removeTimerButtonName(timerId)] != null || staleBlankTimer(timerId)
 }
 
 boolean staleBlankTimer(String timerId) {
@@ -396,6 +398,16 @@ boolean staleBlankTimer(String timerId) {
     if (!timerId.startsWith('timer')) return false
     long createdAt = safeLong(timerId - 'timer', 0L)
     createdAt > 0L && now() - createdAt > 300000L
+}
+
+boolean legacyTimerSettingsPresent() {
+    settings['timerLabel'] != null ||
+        settings['targetSwitch'] != null ||
+        settings['incrementMinutes'] != null ||
+        settings['maximumMinutes'] != null ||
+        settings['debounceMs'] != null ||
+        settings['triggerSwitches'] != null ||
+        settings['triggerButtons'] != null
 }
 
 String timerIdForChild(child) {

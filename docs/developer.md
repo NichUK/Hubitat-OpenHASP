@@ -2,7 +2,7 @@
 
 ## Runtime Architecture
 
-Version 0.4.8 uses a direct MQTT connector per OpenHASP plate.
+Version 0.4.9 uses a direct MQTT connector per OpenHASP plate.
 
 ```mermaid
 flowchart LR
